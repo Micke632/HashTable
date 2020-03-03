@@ -12,8 +12,8 @@ class HashTable
 	{
 		K key = {};
 		V value = {};
-		int hash;
-		Node *next;	
+		int hash = {};
+		Node *next = {};
 	};
 	using node_type = Node<K,V>;
 	using node_allocator = typename Alloc::template rebind<node_type>::other;
@@ -23,11 +23,25 @@ class HashTable
 	template <typename K, typename V >
 	struct Bucket {
 		Bucket(int p, node_allocator &allocator) {			
-
+		
 			head = allocator.allocate(1);
-			allocator.construct(head);					
+			allocator.construct(head);
 			head->next = nullptr;			
 			pos = p;
+			count = 0;
+		}
+
+		void removeNodes(node_allocator &allocator) {
+			auto *next = head->next;
+			auto *n = next;
+			while (next != nullptr) {
+				next = next->next;
+				allocator.destroy(n);
+				allocator.deallocate(n, 1);
+				n = next;
+			}
+			head->next = nullptr;
+
 			count = 0;
 		}
 
@@ -77,13 +91,14 @@ class HashTable
 
 	void insert(Node<K, V> *node) {
 
+		assert(node->next == nullptr);
+
 		int pos = node->hash % m_size;
 
 		auto *bucket = m_buckets[pos];
 		if (bucket->count == 0) {
 			//insert after head	
 			bucket->head->next = node;		
-			node->next = nullptr;		
 			bucket->count = 1;
 
 		}
@@ -138,6 +153,8 @@ class HashTable
 							auto *next_n = next->next;
 							prev->next = next_n;						
 							bucket->count--;
+							assert(bucket->count >= 0);
+							next->next = nullptr;
 							moveNodes.push_back(next);
 						}
 						prev = next;
@@ -156,6 +173,10 @@ class HashTable
 
 		using reference = V & ;
 		using const_reference = const V&;
+		
+		node_allocator& getAllocator() {
+			return allocator;
+		}
 
 		class iterator {
 
@@ -251,12 +272,19 @@ class HashTable
 
 		~HashTable()
 		{
+			destroy();
+		};
+
+		void destroy() {
 			for (int i = 0; i < m_size; i++) {
+				m_buckets[i]->removeNodes(allocator);
 				m_buckets[i]->destroy(allocator);
 				delete m_buckets[i];
 			}
 			m_buckets.clear();
-		};
+			m_size = 0;
+			m_total = 0;
+		}
 
 		HashTable(HashTable &&other)
 		{		
@@ -268,10 +296,7 @@ class HashTable
 		}
 		HashTable& operator=(HashTable &&other) {
 
-			for (int i = 0; i < m_size; i++) {
-				m_buckets[i]->destroy(allocator);
-				delete m_buckets[i];
-			}
+			destroy();
 
 			m_size = other.m_size;
 			m_total = other.m_total;
@@ -284,11 +309,7 @@ class HashTable
 
 		HashTable& operator=(const HashTable &other) 
 		{
-			for (int i = 0; i < m_size; i++) {
-				m_buckets[i]->destroy(allocator);
-				delete m_buckets[i];
-			}
-			m_buckets.clear();
+			destroy();
 
 			m_size = other.m_size;
 			m_total = other.m_total;
@@ -302,11 +323,7 @@ class HashTable
 
 		HashTable(const HashTable &other)
 		{
-			for (int i = 0; i < m_size; i++) {
-				m_buckets[i]->destroy(allocator);
-				delete m_buckets[i];
-			}
-			m_buckets.clear();
+			destroy();
 
 			m_size = other.m_size;
 			m_total = other.m_total;
@@ -345,6 +362,7 @@ class HashTable
 			}
 		}
 		
+	
 
 		int size() const {
 			return m_total;
@@ -367,9 +385,10 @@ class HashTable
 				}
 				next = next->next;
 			}
-			throw std::exception("");
+			throw std::runtime_error("not found");
 		}
 
+		
 
 		reference get(K const &key) {
 			return const_cast<V&>(const_cast<const HashTable*>(this)->at(key));
@@ -379,12 +398,12 @@ class HashTable
 			return at(key);
 		}
 
-
+	
 		bool remove(K const &key) {
 			int h = getHash(key);
 			int pos = h % m_size;
 
-			auto *bucket = m_buckets.at(pos);
+			auto *bucket = m_buckets[pos];
 
 			if (bucket->head->next) {
 				auto *prev = bucket->head;
@@ -416,7 +435,7 @@ class HashTable
 		bool exist(K const &key) const {
 			int h = getHash(key);
 			int pos = h % m_size;
-			auto *bucket = m_buckets.at(pos);
+			auto *bucket = m_buckets[pos];
 			if (bucket->count == 0) return false;
 
 			auto *next = bucket->head->next;
@@ -434,18 +453,7 @@ class HashTable
 
 			for (int i = 0; i < m_size; i++) {
 				auto *bucket = m_buckets[i];
-
-				auto *next = bucket->head->next;
-				auto *n = next;
-				while (next != nullptr) {
-					next = next->next;
-					allocator.destroy(n);
-					allocator.deallocate(n, 1);	
-					n = next;
-				}							
-				bucket->head->next = nullptr;
-				
-				bucket->count = 0;
+				bucket->removeNodes(allocator);
 			}
 			m_total = 0;
 		}
