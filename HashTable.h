@@ -7,6 +7,7 @@ template <typename K, typename V,
 	typename Alloc=std::allocator<V>>		//V is not allocated , but we need the template to rebind
 class HashTable
 {
+private:
 	template <typename K, typename V >
 	struct Node
 	{
@@ -18,7 +19,8 @@ class HashTable
 	using node_type = Node<K,V>;
 	using node_allocator = typename Alloc::template rebind<node_type>::other;
 	node_allocator allocator;
-	
+	using reference = V & ;
+	using const_reference = const V&;
 
 	template <typename K, typename V >
 	struct Bucket {
@@ -114,71 +116,137 @@ class HashTable
 
 		}
 	}
-		template< typename K >
-		typename std::enable_if< !std::is_integral< K >::value, int >::type
-			getHash(const K &key) const {
-			int h = key.getHash();
-			return h;
-		}
+	
+	bool updateIfExist(int hash, const K&key, const V &value) {
+		int pos = hash % m_size;
+		auto *bucket = m_buckets[pos];
+			
+		auto *next = bucket->head->next;
 
-		template< typename K >
-		typename std::enable_if< std::is_integral< K >::value, int >::type
-			getHash(const K &key) const {
-			return key;
-		}
-
-		void rehash() {
-
-			m_buckets.resize(m_size * 2);
-
-			for (int i = m_size; i < m_size * 2; i++) {
-				m_buckets[i] = new Bucket<K, V>(i, allocator);
+		while (next != nullptr) {
+			if (next->key == key) {
+				next->value = value;
+				return true;
 			}
-			int old = m_size;
-			m_size *= 2;
+			next = next->next;
+		}
+		
+		return false;
+	}
 
-			std::vector<Node<K, V>*> moveNodes;
+	bool removeAt(int hash,const K&key) {
+		int pos = hash % m_size;
+		auto *bucket = m_buckets[pos];
 
-			for (int i = 0; i < old; i++) {
-				auto *bucket = m_buckets[i];
-				if (bucket && bucket->head->next) {
-					auto *prev = bucket->head;
-					auto *next = bucket->head->next;
-					while (next != nullptr) {
+		if (bucket->head->next) {
+			auto *prev = bucket->head;
+			auto *next = bucket->head->next;
 
-						int h = getHash(next->key);
-						int pos = h % m_size;
-						if (pos != bucket->pos) {
+			while (next != nullptr) {
 
-							auto *next_n = next->next;
-							prev->next = next_n;						
-							bucket->count--;
-							assert(bucket->count >= 0);
-							next->next = nullptr;
-							moveNodes.push_back(next);
-						}
-						prev = next;
-						next = next->next;
+				if (next->key == key) {
+
+					auto *next_n = next->next;
+					prev->next = next_n;
+					bucket->count--;
+					assert(bucket->count >= 0);
+					m_total--;
+					allocator.destroy(next);
+					allocator.deallocate(next, 1);
+					return true;
+				}
+
+				prev = next;
+				next = next->next;
+			}
+		}
+
+		return false;
+	}
+
+	template< typename K >
+	typename std::enable_if< !std::is_integral< K >::value, int >::type
+		getHash(const K &key) const {
+		int h = key.getHash();
+		return h;
+	}
+
+	template< typename K >
+	typename std::enable_if< std::is_integral< K >::value, int >::type
+		getHash(const K &key) const {
+		return key;
+	}
+
+	void rehash() {
+
+		m_buckets.resize(m_size * 2);
+
+		for (int i = m_size; i < m_size * 2; i++) {
+			m_buckets[i] = new Bucket<K, V>(i, allocator);
+		}
+		int old = m_size;
+		m_size *= 2;
+
+		std::vector<Node<K, V>*> moveNodes;
+
+		for (int i = 0; i < old; i++) {
+			auto *bucket = m_buckets[i];
+			if (bucket && bucket->head->next) {
+				auto *prev = bucket->head;
+				auto *next = bucket->head->next;
+				while (next != nullptr) {
+
+					int h = getHash(next->key);
+					int pos = h % m_size;
+					if (pos != bucket->pos) {
+
+						auto *next_n = next->next;
+						prev->next = next_n;						
+						bucket->count--;
+						assert(bucket->count >= 0);
+						next->next = nullptr;
+						moveNodes.push_back(next);
 					}
+					prev = next;
+					next = next->next;
 				}
 			}
-
-
-			for (auto *n : moveNodes) {
-				insert(n);
-			}
 		}
+
+
+		for (auto *n : moveNodes) {
+			insert(n);
+		}
+	}
+
+	const_reference	at(K const &key) const {
+		int h = getHash(key);
+		int pos = h % m_size;
+
+		auto *bucket = m_buckets.at(pos);
+		auto *next = bucket->head->next;
+
+		while (next != nullptr) {
+			if (next->key == key) {
+				return next->value;
+			}
+			next = next->next;
+		}
+
+		throw std::runtime_error("not found");
+
+	}
 
 	public:
 
-		using reference = V & ;
-		using const_reference = const V&;
-		
+				
 		node_allocator& getAllocator() {
 			return allocator;
 		}
 
 		class iterator {
+
+			friend class HashTable;
 
 			Node<K, V>* findNext() const {
 				if (m_lastBucket == m_buckets->size()) {
@@ -215,14 +283,26 @@ class HashTable
 				return m_node;
 
 			}
-		public:
+		
 
 			iterator() : 
 				m_buckets(nullptr), 
 				m_lastBucket(0), 
-				m_node(nullptr)
+				m_node(nullptr),
+				m_total(0),
+				m_count(0)
 			{
 			}
+
+			iterator(Node<K, V> *n) :
+				m_buckets(nullptr),
+				m_lastBucket(0),
+				m_node(n),
+				m_total(0),
+				m_count(0)
+			{
+			}
+
 
 			iterator(const std::vector<Bucket<K, V>*> *ptr, int tot) : 
 				m_buckets(ptr),
@@ -233,8 +313,9 @@ class HashTable
 			{
 				m_node = findNext();
 			}
+		public:
 			iterator operator++() {
-				if (++m_count == m_total)
+				if (++m_count >= m_total)
 					m_node = nullptr;	//we have seen all, just exit
 				else
 					m_node = findNext();
@@ -243,6 +324,9 @@ class HashTable
 			}
 			bool operator!=(const iterator & other) const {
 				return m_node != other.m_node;
+			}
+			bool operator==(const iterator & other) const {
+				return m_node == other.m_node;
 			}
 			std::pair<K, V> operator*() const { return { m_node->key,m_node->value }; }
 		private:
@@ -341,16 +425,19 @@ class HashTable
 			int hash = getHash(key);
 
 			//remove if exist
-			remove(key);
+			if (updateIfExist(hash, key, value)) {
+				return;
+			}
 
 			auto *node = allocator.allocate(1);
 			allocator.construct(node);
 
-			node->key = std::move(key);
-			node->value = std::move(value);
+			node->key = key;
+			node->value = value;
 			node->hash = hash;
-
+			
 			insert(node);
+
 			m_total++;
 
 			if (m_total > 10) {
@@ -371,8 +458,10 @@ class HashTable
 		int bucketSize() const {
 			return m_size;
 		}
+		
 
-		const_reference at(K const &key) const {
+			
+		iterator find(K const &key) {
 			int h = getHash(key);
 			int pos = h % m_size;
 
@@ -381,14 +470,15 @@ class HashTable
 
 			while (next != nullptr) {
 				if (next->key == key) {
-					return next->value;
+					return iterator(next);
 				}
+
 				next = next->next;
 			}
-			throw std::runtime_error("not found");
-		}
 
-		
+
+			return end();
+		}
 
 		reference get(K const &key) {
 			return const_cast<V&>(const_cast<const HashTable*>(this)->at(key));
@@ -401,33 +491,7 @@ class HashTable
 	
 		bool remove(K const &key) {
 			int h = getHash(key);
-			int pos = h % m_size;
-
-			auto *bucket = m_buckets[pos];
-
-			if (bucket->head->next) {
-				auto *prev = bucket->head;
-				auto *next = bucket->head->next;
-				
-				while (next != nullptr) {
-
-					if (next->key == key) {
-
-						auto *next_n = next->next;				
-						prev->next = next_n;
-						bucket->count--;
-						m_total--;
-						allocator.destroy(next);
-						allocator.deallocate(next,1);
-						return true;
-					}
-
-					prev = next;
-					next = next->next;
-				}
-			}
-			
-			return false;
+			return removeAt(h,key);
 		}
 
 
@@ -460,6 +524,7 @@ class HashTable
 
 	};
 
+	
 
 
 
