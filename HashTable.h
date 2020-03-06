@@ -26,15 +26,15 @@ private:
 	struct Bucket {
 		Bucket(int p, node_allocator &allocator) {			
 		
-			head = allocator.allocate(1);
-			allocator.construct(head);
-			head->next = nullptr;			
 			pos = p;
 			count = 0;
+			active = false;
 		}
 
+		
+
 		void removeNodes(node_allocator &allocator) {
-			auto *next = head->next;
+			auto *next = node.next;
 			auto *n = next;
 			while (next != nullptr) {
 				next = next->next;
@@ -42,27 +42,27 @@ private:
 				allocator.deallocate(n, 1);
 				n = next;
 			}
-			head->next = nullptr;
-
+			node.next = nullptr;
+			active = false;
 			count = 0;
 		}
 
-		void destroy(node_allocator &allocator) {
-			allocator.destroy(head);
-			allocator.deallocate(head, 1);
-			head = nullptr;
-		}
-		~Bucket() {
-			head=nullptr;		
+		~Bucket() {			
 		}
 
 		Bucket *copy(node_allocator &allocator) const {
 			Bucket *bucket = new Bucket<K, V>(pos, allocator);
 
-			auto *this_bucket_next = this->head->next;
-			auto *new_bucket_next = bucket->head;
+			auto *this_bucket_next = this->node.next;
+			
+			bucket->active = this->active;
+			bucket->node.key = this->node.key;
+			bucket->node.value = this->node.value;
+			bucket->node.hash = this->node.hash;
+			int c = bucket->active ? 1:0;
 
 			while (this_bucket_next != nullptr) {
+
 				auto *node = allocator.allocate(1);
 				allocator.construct(node);
 
@@ -70,18 +70,35 @@ private:
 				node->value = this_bucket_next->value;
 				node->hash = this_bucket_next->hash;
 				node->next = nullptr;
-				bucket->count++;
-				new_bucket_next->next = node;
+				c++;
+							
 				this_bucket_next = this_bucket_next->next;
-				new_bucket_next = new_bucket_next->next;
-			}
+				
+				if (bucket->node.next == nullptr) {
+					bucket->node.next = node;
+				}
+				else {
+					//find end
+					auto *node_next = bucket->node.next;
+					auto *n = node_next;
+					while (n != nullptr) {
+						node_next = n;
+						n = n->next;
+					}
+					node_next->next = node;
+				}
 
+			}
+			assert(this->count == c);
+
+			bucket->count = this->count;
 			return bucket;
 		}
 
 		int pos;
 		int count;
-		Node<K, V> *head;		
+		bool active;
+		Node<K,V> node;
 
 	};
 
@@ -91,6 +108,46 @@ private:
 	int m_size;  //bucket size
 	int m_total;  //number of elements
 
+	void insert(const K& key, const V& value) {
+
+		int hash = getHash(key);
+		int pos = hash % m_size;
+		auto *bucket = m_buckets[pos];		
+		if (!bucket->active || bucket->count == 0) {
+		
+			bucket->node.key = key;
+			bucket->node.value = value;
+			bucket->node.hash = hash;
+			bucket->count++;
+			bucket->active = true;
+		}
+		else {
+			bucket->count++;
+			auto *node = allocator.allocate(1);
+			allocator.construct(node);
+			node->key = key;
+			node->value = value;
+			node->hash = hash;
+			node->next = nullptr;
+			if (bucket->node.next == nullptr) {
+				bucket->node.next = node;
+				return;
+			}
+			
+			auto *node_next = bucket->node.next;
+			auto *n = node_next;
+			while (n != nullptr) {
+				node_next = n;
+				n = n->next;
+			}
+			node_next->next = node;
+		}
+			
+		
+		
+		
+	}
+	
 	void insert(Node<K, V> *node) {
 
 		assert(node->next == nullptr);
@@ -98,34 +155,50 @@ private:
 		int pos = node->hash % m_size;
 
 		auto *bucket = m_buckets[pos];
-		if (bucket->count == 0) {
-			//insert after head	
-			bucket->head->next = node;		
-			bucket->count = 1;
+		if (bucket->count == 0) {			
+			bucket->node.key = std::move(node->key);
+			bucket->node.value = std::move(node->value);
+			bucket->node.hash = node->hash;
+			bucket->count++;
+			bucket->active = true;
+			allocator.destroy(node);
+			allocator.deallocate(node, 1);
 
 		}
 		else {
-			auto *n = bucket->head->next;
+			bucket->count++;
+			if (bucket->node.next == nullptr) {
+				bucket->node.next = node;
+				return;
+			}
+
+			auto *n = bucket->node.next;
 			auto *node_next = n;
 			while (n != nullptr) {
 				node_next = n;
 				n = n->next;
 			}
 			node_next->next = node;
-			bucket->count++;
-
+			
 		}
 	}
 	
+
 	bool updateIfExist(int hash, const K&key, const V &value) {
 		int pos = hash % m_size;
-		auto *bucket = m_buckets[pos];
-			
-		auto *next = bucket->head->next;
+		auto *bucket = m_buckets.at(pos);
+		
+		if (bucket->active && bucket->node.key == key) {
+			bucket->node.value = value;
+			bucket->node.hash = hash;
+			return true;
+		}
+		auto *next = bucket->node.next;
 
 		while (next != nullptr) {
 			if (next->key == key) {
 				next->value = value;
+				next->hash = hash;
 				return true;
 			}
 			next = next->next;
@@ -138,10 +211,32 @@ private:
 		int pos = hash % m_size;
 		auto *bucket = m_buckets[pos];
 
-		if (bucket->head->next) {
-			auto *prev = bucket->head;
-			auto *next = bucket->head->next;
+		if (bucket->active && bucket->node.key == key) {
+			bucket->active = false;
+			m_total--;
+			bucket->count--;
+			assert(bucket->count >= 0);
 
+			moveToFront(bucket);	//check if we can move the next to the front
+
+			return true;
+		}
+	
+		if (bucket->node.next) {
+			auto *next = bucket->node.next;
+			if (next->key == key) {
+				auto *next_n = next->next;
+				allocator.destroy(next);
+				allocator.deallocate(next, 1);
+				bucket->count--;
+				assert(bucket->count >= 0);
+				bucket->node.next = next_n;
+				m_total--;						
+
+				return true;
+			}
+			auto *prev = next;
+			next = bucket->node.next->next;
 			while (next != nullptr) {
 
 				if (next->key == key) {
@@ -160,7 +255,7 @@ private:
 				next = next->next;
 			}
 		}
-
+		
 		return false;
 	}
 
@@ -177,8 +272,61 @@ private:
 		return key;
 	}
 
-	void rehash() {
+	bool check(Bucket<K, V> *bucket) const {
+		int tot = 0;
+		if (bucket->active) {
+			tot = 1;
+			assert(bucket->node.hash == getHash(bucket->node.key));
 
+		}
+		if (bucket->count == 1) 
+		{
+			if (bucket->active) {
+				assert(nullptr == bucket->node.next);
+			}
+
+		}
+
+		if (bucket->node.next) {
+			auto *next = bucket->node.next;
+			while (next != nullptr) {
+				tot++;
+				assert(next->hash == getHash(next->key));
+				next = next->next;
+
+				if (tot > bucket->count) {
+					assert(true);
+				}
+			}
+		}
+
+		return bucket->count == tot;
+	}
+
+	void moveToFront(Bucket<K,V> *bucket) {
+		
+		if (!bucket->active && bucket->node.next) {
+			auto *next = bucket->node.next;
+			bucket->node.key = std::move(next->key);
+			bucket->node.value = std::move(next->value);
+			bucket->node.hash = next->hash;
+			bucket->active = true;
+			if (next->next) {			
+				bucket->node.next = next->next;
+			}
+			else {
+				bucket->node.next = nullptr;
+			}
+
+			allocator.destroy(next);
+			allocator.deallocate(next, 1);
+		}
+	}
+
+	
+
+	void rehash() {
+		
 		m_buckets.resize(m_size * 2);
 
 		for (int i = m_size; i < m_size * 2; i++) {
@@ -191,32 +339,64 @@ private:
 
 		for (int i = 0; i < old; i++) {
 			auto *bucket = m_buckets[i];
-			if (bucket && bucket->head->next) {
-				auto *prev = bucket->head;
-				auto *next = bucket->head->next;
-				while (next != nullptr) {
 
-					int h = getHash(next->key);
-					int pos = h % m_size;
-					if (pos != bucket->pos) {
-
-						auto *next_n = next->next;
-						prev->next = next_n;						
-						bucket->count--;
-						assert(bucket->count >= 0);
-						next->next = nullptr;
-						moveNodes.push_back(next);
-					}
-					prev = next;
-					next = next->next;
+			if (bucket->active) {
+				int h = getHash(bucket->node.key);
+				int pos = h % m_size;
+				if (pos != bucket->pos) {
+					auto *node = allocator.allocate(1);
+					allocator.construct(node);
+					node->key = std::move(bucket->node.key);
+					node->value = std::move(bucket->node.value);
+					node->hash = bucket->node.hash;
+					node->next = nullptr;
+					bucket->active = false;
+					bucket->count--;
+					assert(bucket->count >= 0);
+					moveNodes.push_back(node);
 				}
 			}
+	
+			auto *HOME = bucket->node.next;  	//points to bucket->node.next
+			auto *node = bucket->node.next;
+			auto *prev = bucket->node.next;		//points to previos active node
+
+			while (node) {
+								
+				int h = getHash(node->key);
+				int pos = h % m_size;
+				auto *next_node = node->next;
+				if (pos != bucket->pos) {
+					//remove the node from this bucket
+					if (node == HOME) {
+						bucket->node.next = next_node;
+						HOME = bucket->node.next;
+					}
+					else {
+						prev->next = next_node;
+					}
+					bucket->count--;
+					assert(bucket->count >= 0);
+					node->next = nullptr;
+					moveNodes.push_back(node);
+					
+				} 
+				else {
+					prev = node;
+				}
+
+				node = next_node;
+				
+			}
+
+
 		}
 
 
 		for (auto *n : moveNodes) {
 			insert(n);
 		}
+		
 	}
 
 	const_reference	at(K const &key) const {
@@ -224,7 +404,10 @@ private:
 		int pos = h % m_size;
 
 		auto *bucket = m_buckets.at(pos);
-		auto *next = bucket->head->next;
+		if (bucket->active && bucket->node.key == key) {
+			return bucket->node.value;
+		}
+		auto *next = bucket->node.next;
 
 		while (next != nullptr) {
 			if (next->key == key) {
@@ -250,13 +433,33 @@ private:
 
 			Node<K, V>* findNext() const {
 				if (m_lastBucket == m_buckets->size()) {
-					return nullptr;
+					if (m_checkHead) {					
+						return nullptr;
+					}
+					else {
+						m_checkHead = true;
+						m_lastBucket = 0;
+					}
 				}
-
+				
 				auto *bucket = (*m_buckets)[m_lastBucket];
 
-				auto *next = bucket->head->next;
+				if (m_checkHead && bucket->active) {
+
+					m_headNode.key = bucket->node.key;
+					m_headNode.value = bucket->node.value;		
+					m_lastBucket++;
+					return &m_headNode;
+				}
+			
+				if (m_checkHead) {
+					m_lastBucket++;
+					return findNext();
+				}
+
+				auto *next = bucket->node.next;
 				if (next == nullptr) {
+				
 					m_lastBucket++;
 					return findNext();
 				}
@@ -276,10 +479,10 @@ private:
 				}
 
 				if (!m_node) {
-					m_lastBucket++;
+					m_lastBucket++;				
 					return findNext();
 				}
-
+				
 				return m_node;
 
 			}
@@ -309,7 +512,8 @@ private:
 				m_lastBucket(0), 
 				m_node(nullptr), 
 				m_total(tot), 
-				m_count(0)
+				m_count(0),
+				m_checkHead(false)
 			{
 				m_node = findNext();
 			}
@@ -334,7 +538,9 @@ private:
 			mutable int m_lastBucket;
 			int m_total;
 			int m_count;
+			mutable Node<K, V> m_headNode;
 			mutable Node<K, V> *m_node;
+			mutable bool m_checkHead;
 
 		};
 
@@ -344,9 +550,9 @@ private:
 		iterator end() const {
 			return iterator();	//m_node =nullptr is end..
 		}
-
-		HashTable(int size = 20) {
-			m_size = size;
+		
+		explicit HashTable(int size = 20) {
+			m_size = std::max(size,1);
 			m_total = 0;
 			m_buckets.reserve(size);
 			for (int i = 0; i < m_size; i++) {
@@ -359,10 +565,19 @@ private:
 			destroy();
 		};
 
+		bool check() const{
+			int tot = 0;
+			for (int i = 0; i < m_size; i++) {
+				if (!check(m_buckets[i])) return false;
+				tot += m_buckets[i]->count;
+			}
+
+			return tot == m_total;
+		}
+
 		void destroy() {
 			for (int i = 0; i < m_size; i++) {
 				m_buckets[i]->removeNodes(allocator);
-				m_buckets[i]->destroy(allocator);
 				delete m_buckets[i];
 			}
 			m_buckets.clear();
@@ -407,7 +622,7 @@ private:
 
 		HashTable(const HashTable &other)
 		{
-			destroy();
+			//destroy();
 
 			m_size = other.m_size;
 			m_total = other.m_total;
@@ -424,19 +639,12 @@ private:
 
 			int hash = getHash(key);
 
-			//remove if exist
+
 			if (updateIfExist(hash, key, value)) {
 				return;
 			}
 
-			auto *node = allocator.allocate(1);
-			allocator.construct(node);
-
-			node->key = key;
-			node->value = value;
-			node->hash = hash;
-			
-			insert(node);
+			insert(key,value);
 
 			m_total++;
 
@@ -465,9 +673,11 @@ private:
 			int h = getHash(key);
 			int pos = h % m_size;
 
-			auto *bucket = m_buckets.at(pos);
-			auto *next = bucket->head->next;
-
+			auto *bucket = m_buckets.at(pos);			
+			if (bucket->active && bucket->node.key == key) {
+				return iterator(&bucket->node);				
+			}
+			auto *next = bucket->node.next;
 			while (next != nullptr) {
 				if (next->key == key) {
 					return iterator(next);
@@ -475,8 +685,7 @@ private:
 
 				next = next->next;
 			}
-
-
+			
 			return end();
 		}
 
@@ -501,8 +710,10 @@ private:
 			int pos = h % m_size;
 			auto *bucket = m_buckets[pos];
 			if (bucket->count == 0) return false;
-
-			auto *next = bucket->head->next;
+			if (bucket->active && bucket->node.key == key) {
+				return true;
+			}
+			auto *next = bucket->node.next;
 			while (next != nullptr) {
 				if (next->key == key) {
 					return true;
