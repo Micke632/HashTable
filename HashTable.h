@@ -2,18 +2,20 @@
 
 
 #include <vector>
+#include <list>
 
 template <typename K, typename V, 
 	typename Alloc=std::allocator<V>>		//V is not allocated , but we need the template to rebind
 class HashTable
 {
 private:
+	
+
 	template <typename K, typename V >
 	struct Node
 	{
 		K key = {};
 		V value = {};
-		int hash = {};
 		Node *next = {};
 	};
 	using node_type = Node<K,V>;
@@ -21,25 +23,26 @@ private:
 	node_allocator allocator;
 	using reference = V & ;
 	using const_reference = const V&;
+	
+
+	std::vector<node_type*, Alloc> m_pool;
 
 	template <typename K, typename V >
+
 	struct Bucket {
-		Bucket(int p, node_allocator &allocator) {			
+		Bucket(int p) {			
 		
 			pos = p;
 			count = 0;
-			active = false;
+			active = false;		
 		}
-
 		
-
-		void removeNodes(node_allocator &allocator) {
+		void removeNodes(HashTable *home) {
 			auto *next = node.next;
 			auto *n = next;
 			while (next != nullptr) {
 				next = next->next;
-				allocator.destroy(n);
-				allocator.deallocate(n, 1);
+				home->releaseNode(n);
 				n = next;
 			}
 			node.next = nullptr;
@@ -50,25 +53,22 @@ private:
 		~Bucket() {			
 		}
 
-		Bucket *copy(node_allocator &allocator) const {
-			Bucket *bucket = new Bucket<K, V>(pos, allocator);
+		Bucket *copy(HashTable *home) const {
+			Bucket *bucket = new Bucket<K, V>(pos);
 
 			auto *this_bucket_next = this->node.next;
 			
 			bucket->active = this->active;
 			bucket->node.key = this->node.key;
 			bucket->node.value = this->node.value;
-			bucket->node.hash = this->node.hash;
+
 			int c = bucket->active ? 1:0;
 
 			while (this_bucket_next != nullptr) {
 
-				auto *node = allocator.allocate(1);
-				allocator.construct(node);
-
+				auto *node = home->getNode();
 				node->key = this_bucket_next->key;
-				node->value = this_bucket_next->value;
-				node->hash = this_bucket_next->hash;
+				node->value = this_bucket_next->value;				
 				node->next = nullptr;
 				c++;
 							
@@ -98,15 +98,35 @@ private:
 		int pos;
 		int count;
 		bool active;
-		Node<K,V> node;
+		Node<K,V> node;		
 
 	};
 
-	std::vector <Bucket<K, V>*> m_buckets;
+	using Bucketvector = std::vector<Bucket<K, V>*, Alloc>;
+
+	Bucketvector m_buckets;
+
 
 
 	int m_size;  //bucket size
 	int m_total;  //number of elements
+
+
+	node_type* getNode() {
+		if (!m_pool.empty()) {
+			auto *p = m_pool.back();
+			m_pool.pop_back();
+			return p;
+
+		}
+		auto *node = allocator.allocate(1);
+	//	allocator.construct(node);
+		return node;
+	}
+
+	void  releaseNode(node_type* node) {
+		m_pool.push_back(node);	
+	}
 
 	void insert(const K& key, const V& value) {
 
@@ -117,17 +137,15 @@ private:
 		
 			bucket->node.key = key;
 			bucket->node.value = value;
-			bucket->node.hash = hash;
 			bucket->count++;
 			bucket->active = true;
 		}
 		else {
 			bucket->count++;
-			auto *node = allocator.allocate(1);
-			allocator.construct(node);
+			auto *node = getNode();
+		
 			node->key = key;
 			node->value = value;
-			node->hash = hash;
 			node->next = nullptr;
 			if (bucket->node.next == nullptr) {
 				bucket->node.next = node;
@@ -148,49 +166,45 @@ private:
 		
 	}
 	
-	void insert(Node<K, V> *node) {
+	void insert(std::pair<node_type*,int> &node) {
 
-		assert(node->next == nullptr);
+		assert(node.first->next == nullptr);
 
-		int pos = node->hash % m_size;
+		int pos = node.second % m_size;
 
 		auto *bucket = m_buckets[pos];
-		if (bucket->count == 0) {			
-			bucket->node.key = std::move(node->key);
-			bucket->node.value = std::move(node->value);
-			bucket->node.hash = node->hash;
+		if (!bucket->active || bucket->count == 0) {			
+			bucket->node.key = std::move(node.first->key);
+			bucket->node.value = std::move(node.first->value);
 			bucket->count++;
 			bucket->active = true;
-			allocator.destroy(node);
-			allocator.deallocate(node, 1);
-
+			releaseNode(node.first);				
 		}
 		else {
 			bucket->count++;
 			if (bucket->node.next == nullptr) {
-				bucket->node.next = node;
+				bucket->node.next = node.first;
 				return;
 			}
-
+			//find end
 			auto *n = bucket->node.next;
 			auto *node_next = n;
 			while (n != nullptr) {
 				node_next = n;
 				n = n->next;
 			}
-			node_next->next = node;
+			node_next->next = node.first;
 			
 		}
 	}
 	
 
-	bool updateIfExist(int hash, const K&key, const V &value) {
+	bool updateIfExist(int hash, const K &key, const V &value) {
 		int pos = hash % m_size;
 		auto *bucket = m_buckets.at(pos);
 		
 		if (bucket->active && bucket->node.key == key) {
 			bucket->node.value = value;
-			bucket->node.hash = hash;
 			return true;
 		}
 		auto *next = bucket->node.next;
@@ -198,7 +212,6 @@ private:
 		while (next != nullptr) {
 			if (next->key == key) {
 				next->value = value;
-				next->hash = hash;
 				return true;
 			}
 			next = next->next;
@@ -226,8 +239,7 @@ private:
 			auto *next = bucket->node.next;
 			if (next->key == key) {
 				auto *next_n = next->next;
-				allocator.destroy(next);
-				allocator.deallocate(next, 1);
+				releaseNode(next);
 				bucket->count--;
 				assert(bucket->count >= 0);
 				bucket->node.next = next_n;
@@ -246,8 +258,7 @@ private:
 					bucket->count--;
 					assert(bucket->count >= 0);
 					m_total--;
-					allocator.destroy(next);
-					allocator.deallocate(next, 1);
+					releaseNode(next);
 					return true;
 				}
 
@@ -276,7 +287,6 @@ private:
 		int tot = 0;
 		if (bucket->active) {
 			tot = 1;
-			assert(bucket->node.hash == getHash(bucket->node.key));
 
 		}
 		if (bucket->count == 1) 
@@ -291,7 +301,6 @@ private:
 			auto *next = bucket->node.next;
 			while (next != nullptr) {
 				tot++;
-				assert(next->hash == getHash(next->key));
 				next = next->next;
 
 				if (tot > bucket->count) {
@@ -309,7 +318,6 @@ private:
 			auto *next = bucket->node.next;
 			bucket->node.key = std::move(next->key);
 			bucket->node.value = std::move(next->value);
-			bucket->node.hash = next->hash;
 			bucket->active = true;
 			if (next->next) {			
 				bucket->node.next = next->next;
@@ -318,8 +326,7 @@ private:
 				bucket->node.next = nullptr;
 			}
 
-			allocator.destroy(next);
-			allocator.deallocate(next, 1);
+			releaseNode(next);
 		}
 	}
 
@@ -330,12 +337,13 @@ private:
 		m_buckets.resize(m_size * 2);
 
 		for (int i = m_size; i < m_size * 2; i++) {
-			m_buckets[i] = new Bucket<K, V>(i, allocator);
+			m_buckets[i] = new Bucket<K, V>(i);
 		}
 		int old = m_size;
 		m_size *= 2;
 
-		std::vector<Node<K, V>*> moveNodes;
+		std::vector< std::pair<node_type*,int> > moveNodes;
+		moveNodes.reserve(old);
 
 		for (int i = 0; i < old; i++) {
 			auto *bucket = m_buckets[i];
@@ -344,16 +352,14 @@ private:
 				int h = getHash(bucket->node.key);
 				int pos = h % m_size;
 				if (pos != bucket->pos) {
-					auto *node = allocator.allocate(1);
-					allocator.construct(node);
+					auto *node = getNode();				
 					node->key = std::move(bucket->node.key);
 					node->value = std::move(bucket->node.value);
-					node->hash = bucket->node.hash;
 					node->next = nullptr;
 					bucket->active = false;
 					bucket->count--;
 					assert(bucket->count >= 0);
-					moveNodes.push_back(node);
+					moveNodes.emplace_back( node,h  );
 				}
 			}
 	
@@ -378,7 +384,7 @@ private:
 					bucket->count--;
 					assert(bucket->count >= 0);
 					node->next = nullptr;
-					moveNodes.push_back(node);
+					moveNodes.emplace_back( node,h  );
 					
 				} 
 				else {
@@ -389,11 +395,12 @@ private:
 				
 			}
 
+			moveToFront(bucket);
 
 		}
 
 
-		for (auto *n : moveNodes) {
+		for (auto &n : moveNodes) {
 			insert(n);
 		}
 		
@@ -433,26 +440,25 @@ private:
 
 			Node<K, V>* findNext() const {
 				if (m_lastBucket == m_buckets->size()) {
-					if (m_checkHead) {					
+					if (m_checkFront) {
 						return nullptr;
 					}
 					else {
-						m_checkHead = true;
+						//reached end , now check all nodes at front
+						m_checkFront = true;
 						m_lastBucket = 0;
 					}
 				}
 				
 				auto *bucket = (*m_buckets)[m_lastBucket];
 
-				if (m_checkHead && bucket->active) {
-
-					m_headNode.key = bucket->node.key;
-					m_headNode.value = bucket->node.value;		
-					m_lastBucket++;
-					return &m_headNode;
-				}
-			
-				if (m_checkHead) {
+				if (m_checkFront) {
+					if (bucket->active) {
+						m_headNode.key = bucket->node.key;
+						m_headNode.value = bucket->node.value;		
+						m_lastBucket++;
+						return &m_headNode;
+					}								
 					m_lastBucket++;
 					return findNext();
 				}
@@ -507,13 +513,13 @@ private:
 			}
 
 
-			iterator(const std::vector<Bucket<K, V>*> *ptr, int tot) : 
+			iterator(const Bucketvector *ptr, int tot) :
 				m_buckets(ptr),
 				m_lastBucket(0), 
 				m_node(nullptr), 
 				m_total(tot), 
 				m_count(0),
-				m_checkHead(false)
+				m_checkFront(false)
 			{
 				m_node = findNext();
 			}
@@ -534,13 +540,13 @@ private:
 			}
 			std::pair<K, V> operator*() const { return { m_node->key,m_node->value }; }
 		private:
-			const std::vector <Bucket<K, V>*> *m_buckets;
+			const Bucketvector *m_buckets;
 			mutable int m_lastBucket;
 			int m_total;
 			int m_count;
 			mutable Node<K, V> m_headNode;
 			mutable Node<K, V> *m_node;
-			mutable bool m_checkHead;
+			mutable bool m_checkFront;
 
 		};
 
@@ -552,11 +558,12 @@ private:
 		}
 		
 		explicit HashTable(int size = 20) {
+			m_pool.reserve(20);
 			m_size = std::max(size,1);
 			m_total = 0;
 			m_buckets.reserve(size);
 			for (int i = 0; i < m_size; i++) {
-				m_buckets.push_back(new Bucket<K, V>(i, allocator));
+				m_buckets.push_back(new Bucket<K, V>(i));
 			}
 		}
 
@@ -577,26 +584,36 @@ private:
 
 		void destroy() {
 			for (int i = 0; i < m_size; i++) {
-				m_buckets[i]->removeNodes(allocator);
+				m_buckets[i]->removeNodes(this);
 				delete m_buckets[i];
 			}
 			m_buckets.clear();
 			m_size = 0;
 			m_total = 0;
+
+			while (!m_pool.empty()) {
+				allocator.destroy(m_pool.back());
+				allocator.deallocate(m_pool.back(),1);
+				m_pool.pop_back();
+			}
+
 		}
 
 		HashTable(HashTable &&other)
-		{		
+		{
+			m_pool = std::move(other.m_pool);
 			m_size = other.m_size;
 			m_total = other.m_total;			
 			m_buckets = std::move(other.m_buckets);					
 			other.m_size = 0;
 			other.m_total = 0;		
 		}
+
 		HashTable& operator=(HashTable &&other) {
 
 			destroy();
 
+			m_pool = std::move(other.m_pool);
 			m_size = other.m_size;
 			m_total = other.m_total;
 			m_buckets = std::move(other.m_buckets);
@@ -614,26 +631,42 @@ private:
 			m_total = other.m_total;
 			m_buckets.reserve(m_size);
 			for (int i = 0; i < m_size; i++) {
-				auto *b = other.m_buckets[i]->copy(allocator);
+				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
 			}
 			return *this;
 		}
 
 		HashTable(const HashTable &other)
-		{
-			//destroy();
-
+		{		
 			m_size = other.m_size;
 			m_total = other.m_total;
 			m_buckets.reserve(m_size);
 			for (int i = 0; i < m_size; i++) {
-				auto *b = other.m_buckets[i]->copy(allocator);
+				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
 			}
 
 		}
 		
+		reference operator[](const K &key)  {
+
+			if (exist(key)) {
+				return get(key);
+			}
+			else {
+				V v = {};
+				add(key, v);
+				return get(key);
+			}
+		}
+
+		const_reference operator[](const K &key) const {
+			
+			return get(key);
+			
+		}
+
 		
 		void add(const K& key, const V& value) {
 
@@ -651,7 +684,7 @@ private:
 			if (m_total > 10) {
 				//just a value so not cause rehash during simple unit tests
 				float f = (1.0f*m_total) / m_size;
-				if (f > 0.75) {
+				if (f > 0.80) {
 					rehash();
 				}
 			}
@@ -669,7 +702,7 @@ private:
 		
 
 			
-		iterator find(K const &key) {
+		iterator find(K const &key) const {
 			int h = getHash(key);
 			int pos = h % m_size;
 
@@ -728,7 +761,7 @@ private:
 
 			for (int i = 0; i < m_size; i++) {
 				auto *bucket = m_buckets[i];
-				bucket->removeNodes(allocator);
+				bucket->removeNodes(this);
 			}
 			m_total = 0;
 		}
