@@ -2,7 +2,9 @@
 #include "..\hashtable\hashtable.h"
 #include <memory>
 #include <stdlib.h> 
-
+#include <chrono>
+#include <iostream>
+#include <ctime>
 class XXX
 {
 	int hash;
@@ -278,6 +280,10 @@ TEST(HashMap, Range) {
 	EXPECT_TRUE(it != h.end());
 	EXPECT_EQ(1, 1);
 
+	h.remove(it);
+	EXPECT_FALSE(h.exist(1));
+
+
 	HashTable<int, int> ::iterator it2 = h.find(66);
 	EXPECT_EQ(it2, h.end());
 
@@ -343,6 +349,7 @@ TEST(HashMap, CopyMove) {
 
 	EXPECT_EQ(0, hhh.size());
 
+
 }
 
 
@@ -362,18 +369,19 @@ public:
 	my_allocator(const my_allocator&) {}
 
 	int allocs = 0;
-	int deallocs = 0;
-
+	int deallocs=0;
+	size_type deallocs_byte = 0;
 	pointer   allocate(size_type n, const void * = 0) {
 		T* t = (T*)malloc(n * sizeof(T));
 		allocs++;
 		return t;
 	}
 
-	void      deallocate(void* p, size_type) {
+	void      deallocate(void* p, size_type s) {
 		if (p) {
 			free(p);		
 		}
+		deallocs_byte += s;
 		deallocs++;
 	}
 
@@ -407,14 +415,30 @@ TEST(HashMap, Memory) {
 	h.add(3, 3);
 	h.add(11, 11);
 	h.add(12, 12);
+	h.add(13, 13);
 	h.add(21, 21);
 	h.add(22, 22);
+	h.add(23, 23);
+	h.add(24, 24);
+	h.add(25, 25);
+	h.add(31, 31);
+	h.add(41, 41);
+	h.add(43, 43);
+	h.add(44, 44);
+	h.add(51, 51);
+	h.add(210, 210);
+	h.add(230, 310);
+
+
 	h.remove(3);
 	h.remove(1);
-	h.clear();
+	h.add(3, 3);
+	h.add(1, 1);
+	h.destroy();
 	//check allocationa == deallocations
 	EXPECT_EQ(h.getAllocator().deallocs,h.getAllocator().allocs);
 
+	
 	
 }
 
@@ -434,15 +458,15 @@ TEST(HashMap, Pointer) {
 
 
 
-TEST(HashMap, Large2) {
+TEST(HashMap, LargeAndTimer) {
 
 	HashTable<int, int> h;
 
-	srand(0);
+	srand(std::time(0));
 	std::set<int> ok;
-	for (int i = 0; i < 1000; i++)
+	for (int i = 0; i < 1000000; i++)
 	{
-		int x = rand() % 200000;
+		int x = (rand() << 16) | rand();
 		ok.insert(x);
 		h.add(x, i);
 	}
@@ -454,7 +478,8 @@ TEST(HashMap, Large2) {
 	EXPECT_TRUE(hh.check());
 	EXPECT_EQ(ok.size(), hh.size());
 
-	for (int i = 0; i < 200; i++) {	
+	//erase some
+	for (int i = 0; i < 5000; i++) {	
 		int t = (*ok.begin());
 		hh.remove(t);
 		ok.erase(t);
@@ -464,5 +489,49 @@ TEST(HashMap, Large2) {
 	EXPECT_TRUE(hh.check());
 	EXPECT_EQ(ok.size(), hh.size());
 
-	hh.add(12, 12);
+	hh.add(12, 12);	
+	ok.insert(12);
+	
+	//insert x numbers to test get() against
+	std::vector<int> data;
+
+	for (int i = 0; i < 250000; i++) {
+		int t = (*ok.begin());
+		ok.erase(t);
+		data.push_back(t);
+		if (ok.empty()) break;
+	}
+	int sum = 0;
+	auto start = std::chrono::high_resolution_clock::now();
+
+	std::for_each(data.begin(), data.end() , [&](auto x) 
+	{
+		sum+= hh.get(x);
+
+	});
+	
+	std::for_each(data.rbegin(), data.rend(), [&](auto x)
+	{
+		sum -= hh.get(x);
+
+	});
+
+	auto end = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double> diff = end - start;
+	EXPECT_LE(0, sum);
+	EXPECT_GT(0.05, diff.count());
+}
+
+TEST(HashMap, Operator) {
+	HashTable<int, int> h;
+	h[1] = 4;
+
+	int t = h[1];
+	EXPECT_EQ(4, t);
+
+	h[1] = 5;
+	EXPECT_EQ(5, h[1]);
+
+
+
 }
