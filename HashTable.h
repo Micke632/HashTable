@@ -30,8 +30,7 @@ private:
 
 	struct Bucket {	
 		
-		Bucket(size_t p) {
-			pos = p;
+		Bucket() {			
 			count = 0;
 			active = false;		
 		}
@@ -52,7 +51,7 @@ private:
 
 
 		Bucket *copy(HashTable *home) const {
-			Bucket *bucket = new Bucket<K, V>(pos);
+			Bucket *bucket = new Bucket<K, V>();
 
 			auto *this_bucket_next = this->node.next;
 			
@@ -95,7 +94,6 @@ private:
 			return bucket;
 		}
 				
-		size_t pos;
 		short count;
 		bool active;
 		Node<K,V> node;		
@@ -201,14 +199,14 @@ private:
 			bucket->node.value = value;
 			return true;
 		}
-		auto *next = bucket->node.next;
+		auto *node = bucket->node.next;
 
-		while (next != nullptr) {
-			if (next->key == key) {
-				next->value = value;
+		while (node != nullptr) {
+			if (node->key == key) {
+				node->value = value;
 				return true;
 			}
-			next = next->next;
+			node = node->next;
 		}
 		
 		return false;
@@ -330,14 +328,14 @@ private:
 		m_buckets.resize(m_size * 2);
 
 		for (size_t i = m_size; i < m_size * 2; i++) {
-			m_buckets[i] = new Bucket<K, V>(i);
+			m_buckets[i] = new Bucket<K, V>();
 		}
 		size_t old = m_size;
 		m_size *= 2;
 
 		std::vector< std::pair<node_type*, hash_type> > moveNodes;
 		moveNodes.reserve(old);
-
+		
 		for (size_t i = 0; i < old; i++) {
 			auto *bucket = m_buckets[i];
 			if (bucket->count == 0) continue;
@@ -345,7 +343,7 @@ private:
 			if (bucket->active) {
 				hash_type h = getHash(bucket->node.key);
 				size_t pos = h % m_size;
-				if (pos != bucket->pos) {
+				if (pos != i) {
 					auto *node = getNode();				
 					node->key = std::move(bucket->node.key);
 					node->value = std::move(bucket->node.value);
@@ -366,7 +364,7 @@ private:
 				hash_type h = getHash(node->key);
 				size_t pos = h % m_size;
 				auto *next_node = node->next;
-				if (pos != bucket->pos) {
+				if (pos != i) {
 					//remove the node from this bucket
 					if (node == HOME) {
 						bucket->node.next = next_node;
@@ -447,11 +445,9 @@ private:
 				auto *bucket = (*m_buckets)[m_lastBucket];
 
 				if (m_checkFront) {
-					if (bucket->active) {
-						m_headNode.key = bucket->node.key;
-						m_headNode.value = bucket->node.value;		
+					if (bucket->active) {						
 						m_lastBucket++;
-						return &m_headNode;
+						return &bucket->node;
 					}								
 					m_lastBucket++;
 					return findNext();
@@ -532,13 +528,12 @@ private:
 			bool operator==(const iterator &other) const {
 				return m_node == other.m_node;
 			}
-			std::pair<K, V> operator*() const { return { m_node->key,m_node->value }; }
+			std::pair<const K&, V&> operator*() const { return { m_node->key,m_node->value }; }
 		private:
 			const Bucketvector *m_buckets;
 			mutable size_t m_lastBucket;
 			size_t m_total;
 			size_t m_count;
-			mutable node_type m_headNode;
 			mutable node_type *m_node;
 			mutable bool m_checkFront;
 
@@ -557,7 +552,7 @@ private:
 			m_total = 0;
 			m_buckets.reserve(size);
 			for (size_t i = 0; i < m_size; i++) {
-				m_buckets.push_back(new Bucket<K, V>(i));
+				m_buckets.push_back(new Bucket<K, V>());
 			}
 		}
 
