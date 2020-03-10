@@ -5,6 +5,7 @@
 #include <chrono>
 #include <iostream>
 #include <ctime>
+#include <iterator>
 class XXX
 {
 	int hash;
@@ -16,10 +17,15 @@ public:
 	int getHash() const {
 		return this->hash;
 	}
-	XXX(const XXX &other) = default;
+	XXX(const XXX &other) {
+		this->hash = other.hash;
+	}
 	XXX(XXX &&other) = default;
 	XXX& operator=(XXX&&other) = default;
-	XXX& operator=(const XXX&other) = default;
+	XXX& operator=(const XXX&other) {
+		this->hash = other.hash;
+		return *this;
+	}
 	
 	bool operator==(const XXX &v) {
 		return this->hash == v.hash;
@@ -227,7 +233,7 @@ TEST(HashMap, ObjectAsValue) {
 	
 	h.add(1, XXX(2));
 
-	XXX v = h.get(1);
+	const XXX &v = h.get(1);
 	EXPECT_EQ(2, v.getHash());
 
 	h.remove(1);
@@ -244,6 +250,8 @@ TEST(HashMap, Range) {
 	h.add(2, 3);
 	h.add(20, 4);
 	h.add(21, 5);
+	h.add(41, 10);
+	h.add(30, 7);
 
 	int i = 0;
 	int sum = 0;
@@ -252,9 +260,17 @@ TEST(HashMap, Range) {
 		sum += x.second;
 		i++;		
 	}
-	EXPECT_EQ(15, sum);
-	EXPECT_EQ(5, i);
+	EXPECT_EQ(32, sum);
+	EXPECT_EQ(7, i);
 
+	sum = 0;
+	HashTable<int, int>::iterator it = h.find(21);
+	EXPECT_TRUE(it != h.end());
+	while (it != h.end()) {
+		sum += (*it).second;
+		++it;
+	}
+	
 
 	HashTable<int, XXX> hh;
 
@@ -263,7 +279,7 @@ TEST(HashMap, Range) {
 	sum=0;
 	for (auto &x : hh)
 	{
-		sum += x.second.getHash();
+		sum += x.second.getHash();	
 	}
 
 	EXPECT_EQ(3, sum);
@@ -276,11 +292,12 @@ TEST(HashMap, Range) {
 	EXPECT_EQ(3, sum);
 
 
-	HashTable<int, int> ::iterator it = h.find(1);
-	EXPECT_TRUE(it != h.end());
+	auto itt = h.find(1);
+	EXPECT_TRUE(itt != h.end());
 	EXPECT_EQ(1, 1);
 
-	h.remove(it);
+	itt= h.remove(itt);
+
 	EXPECT_FALSE(h.exist(1));
 
 
@@ -292,7 +309,141 @@ TEST(HashMap, Range) {
 	EXPECT_EQ(it2, h.end());
 }
 
+TEST(HashMap, Range2) {
+	HashTable<int, int> h;
 
+	h.add(1, 1);
+	h.add(10, 2);
+	h.add(2, 3);
+	h.add(20, 4);
+	h.add(21, 5);
+	h.add(41, 10);
+	h.add(30, 7);
+
+	//key : 1, 21, 41 at bucket 1
+
+	//post
+	HashTable<int, int>::iterator it = h.find(1);
+	it++;
+	EXPECT_EQ(21, (*it).first);
+
+	//pre
+	it = h.find(1);
+	++it;
+	EXPECT_EQ(21, (*it).first);
+
+	//test post
+	it = h.find(1);
+	HashTable<int, int>::iterator iz = it++;
+	EXPECT_EQ(1, (*iz).first);
+	EXPECT_EQ(21, (*it).first);
+
+	//test pre
+	it = h.find(1);
+	iz = ++it;
+	EXPECT_EQ(21, (*iz).first);
+	EXPECT_EQ(21, (*it).first);
+
+
+
+	it = h.find(21);
+	++it;
+	EXPECT_EQ(41, (*it).first);
+
+	it = h.find(1);
+	++it;
+	EXPECT_EQ(21, (*it).first);
+
+	//continue to bucket 2, where key 2 is 
+	it = h.find(41);
+	++it;
+	EXPECT_EQ(2, (*it).first);
+
+	it = h.find(2);
+	++it;
+	EXPECT_EQ(10, (*it).first);
+
+	it = h.find(30);
+	++it;
+	EXPECT_TRUE(it == h.end());
+
+	it = h.find(21);
+	it = h.remove(it);
+	EXPECT_FALSE(h.exist(21));
+	EXPECT_EQ(41, (*it).first);
+
+	it = h.find(1);
+	it = h.remove(it);
+	EXPECT_FALSE(h.exist(1));
+	EXPECT_EQ(41, (*it).first);
+
+	//remove 41
+	it = h.remove(it);
+	EXPECT_FALSE(h.exist(41));
+	EXPECT_EQ(2, (*it).first);
+
+	it = h.begin();
+	HashTable<int, int>::iterator itEnd = h.end();
+
+	for (it; it != itEnd;)
+	{
+		if ((*it).first == 2) {
+			it = h.remove(it);
+		}
+		if ((*it).first == 20) {
+			it = h.remove(it);
+		}
+
+		else {
+			++it;
+		}
+	}
+	EXPECT_FALSE(h.exist(2));
+	EXPECT_FALSE(h.exist(20));
+
+
+
+	h.add(1, 1);
+	h.add(10, 2);
+	h.add(2, 3);
+	h.add(20, 4);
+	h.add(21, 5);
+	h.add(41, 10);
+	h.add(30, 7);
+
+	it = h.begin();
+	itEnd = h.end();
+	auto tot = h.size();
+	for (it; it != itEnd; tot--)
+	{
+		it = h.remove(it);
+	}
+
+	EXPECT_EQ(0, tot);
+	EXPECT_EQ(tot, h.size());
+}
+
+TEST(HashMap, Range3) {
+	HashTable<int, int> h;
+
+	h.add(1, 1);
+	h.add(10, 2);
+	h.add(2, 3);
+	h.add(20, 4);
+	h.add(21, 5);
+	h.add(41, 10);
+	h.add(30, 7);
+
+
+	auto tot = std::distance(h.begin(), h.end());
+	EXPECT_EQ(7, tot);
+
+	h.clear();
+
+	tot = std::distance(h.begin(), h.end());
+	EXPECT_EQ(0, tot);
+
+}
 
 TEST(HashMap, CopyMove) {
 	HashTable<int, int> h;
@@ -436,10 +587,8 @@ TEST(HashMap, Memory) {
 	h.add(1, 1);
 	h.destroy();
 	//check allocationa == deallocations
-	EXPECT_EQ(h.getAllocator().deallocs,h.getAllocator().allocs);
+	EXPECT_EQ(h.get_allocator().deallocs,h.get_allocator().allocs);
 
-	
-	
 }
 
 
@@ -520,9 +669,13 @@ TEST(HashMap, LargeAndTimer) {
 	std::chrono::duration<double> diff = end - start;
 	EXPECT_LE(0, sum);
 	EXPECT_GT(0.05, diff.count());
+
+	hh.clearAndTrim(100);
+	EXPECT_EQ(100, hh.getBucketSize());
+
 }
 
-TEST(HashMap, Operator) {
+TEST(HashMap, Operatorindex) {
 	HashTable<int, int> h;
 	h[1] = 4;
 
@@ -532,6 +685,8 @@ TEST(HashMap, Operator) {
 	h[1] = 5;
 	EXPECT_EQ(5, h[1]);
 
+	t = h[2];
+	EXPECT_EQ(0, t);
 
 
 }

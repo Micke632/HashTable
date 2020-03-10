@@ -3,13 +3,15 @@
 
 #include <vector>
 
+
 template <typename K, typename V, 
-	typename Alloc=std::allocator<V>>		//V is not allocated , but we need the template to rebind
+	typename Alloc=std::allocator<V>>		
 class HashTable
 {
-private:
-	
+public:
+	using size_type = unsigned int;
 
+private:
 	template <typename K, typename V >
 	struct Node
 	{		
@@ -20,14 +22,14 @@ private:
 	using node_type = Node<K,V>;
 	using node_allocator = typename Alloc::template rebind<node_type>::other;
 	node_allocator allocator;
-	using reference = V & ;
+	using reference = V& ;
 	using const_reference = const V&;
 	
-	using hash_type = int;
+	using hash_type = unsigned int;
+
 	std::vector<node_type*, Alloc> m_pool;
 
 	template <typename K, typename V >
-
 	struct Bucket {	
 		
 		Bucket() {			
@@ -61,7 +63,7 @@ private:
 				bucket->node.value = this->node.value;
 			}
 
-			short nr_of_nodes = bucket->active ? 1:0;
+			unsigned short nr_of_nodes = bucket->active ? 1:0;
 
 			while (this_bucket_next != nullptr) {
 
@@ -94,7 +96,7 @@ private:
 			return bucket;
 		}
 				
-		short count;
+		unsigned short count;
 		bool active;
 		Node<K,V> node;		
 
@@ -102,11 +104,153 @@ private:
 
 	using Bucketvector = std::vector<Bucket<K, V>*, Alloc>;
 
-	Bucketvector m_buckets;
 	
-	size_t m_size;  //number of elements
-	size_t m_bucketSize;  //buckets
+	
+public:
 
+	
+
+	class iterator {		
+
+	public:	
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = void;
+		using difference_type = size_type;
+		using pointer = void;
+		using reference = void;
+
+		friend class HashTable;
+
+		node_type* findNext() const {
+
+			if (m_lastBucket >= m_buckets->size()) {
+				return nullptr;
+			}
+
+			auto *bucket = (*m_buckets)[m_lastBucket];
+			if (!m_frontChecked) {
+				if (bucket->active) {
+					m_frontChecked = true;
+					return &bucket->node;
+				}
+
+				m_frontChecked = true;
+				m_node = nullptr;
+			}
+
+			auto *node = bucket->node.next;
+			if (node == nullptr) {
+				m_frontChecked = false;
+				m_lastBucket++;
+				return findNext();
+			}
+
+			if (m_frontChecked) {
+				if (m_node == &bucket->node) {
+					m_node = nullptr;
+				}
+			}
+
+			while (node != nullptr) {
+
+				if (m_node && m_node == node) {
+					m_node = m_node->next;
+					break;
+				}
+				if (!m_node) {
+					m_node = node;
+					break;
+				}
+
+				node = node->next;
+			}
+
+
+			if (!m_node) {
+				m_lastBucket++;
+				m_frontChecked = false;
+				return findNext();
+			}
+			return m_node;
+
+		}
+
+		//end iterator
+		iterator() :
+			m_buckets(nullptr),
+			m_lastBucket(0),
+			m_node(nullptr),
+			m_size(0),
+			m_count(0)
+		{
+		}
+
+		iterator(node_type *n,
+			const Bucketvector *ptr,
+			size_type pos,
+			size_type tot,
+			bool frontChecked = true) :
+			m_buckets(ptr),
+			m_lastBucket(pos),
+			m_node(n),
+			m_size(tot),
+			m_count(0),
+			m_frontChecked(frontChecked)
+		{
+			if (m_node == nullptr)
+				m_node = findNext();
+		}
+
+
+	public:
+		//pre
+		iterator& operator++() {
+			if (++m_count >= m_size)
+				m_node = nullptr;
+			else
+				m_node = findNext();
+
+			return *this;
+		}
+		//post
+		iterator operator++(int ) {
+						
+			iterator it(m_node, m_buckets, m_lastBucket, m_size, m_frontChecked);
+			if (++m_count >= m_size)
+				m_node = nullptr;
+			else
+				m_node = findNext();
+				
+			return it;
+		}
+		
+		bool operator!=(const iterator &other) const {
+			return m_node != other.m_node;
+		}
+		bool operator==(const iterator &other) const {
+			return m_node == other.m_node;
+		}
+
+	
+
+		std::pair<const K&, V&> operator*() const { return { m_node->key,m_node->value }; }
+	private:
+		const Bucketvector *m_buckets;
+		mutable size_type m_lastBucket;
+		size_type m_size;
+		size_type m_count;
+		mutable node_type *m_node;
+		mutable bool m_frontChecked;
+
+	};
+
+
+
+private:
+
+	iterator createIterator(node_type *node, size_type pos, bool frontChecked = true) const {
+		return iterator(node, &m_buckets, pos, m_size, frontChecked);
+	}
 
 	node_type* getNode() {
 		if (!m_pool.empty()) {
@@ -115,6 +259,7 @@ private:
 			return p;
 
 		}
+			
 		auto *node = allocator.allocate(1);
 		//allocator.construct(node);
 		return node;
@@ -126,7 +271,7 @@ private:
 
 	void insert(hash_type hash , const K& key, const V& value) {
 				
-		size_t pos = hash % m_bucketSize;
+		size_type pos = hash % m_bucketSize;
 		auto *bucket = m_buckets[pos];		
 		if (!bucket->active || bucket->count == 0) {
 		
@@ -162,7 +307,7 @@ private:
 
 		assert(node.first->next == nullptr);
 
-		size_t pos = node.second % m_bucketSize;
+		size_type pos = node.second % m_bucketSize;
 
 		auto *bucket = m_buckets[pos];
 		if (!bucket->active || bucket->count == 0) {			
@@ -192,7 +337,7 @@ private:
 	
 
 	bool updateIfExist(hash_type hash, const K &key, const V &value) {
-		size_t pos = hash % m_bucketSize;
+		size_type pos = hash % m_bucketSize;
 		auto *bucket = m_buckets[pos];
 		
 		if (bucket->active && bucket->node.key == key) {
@@ -211,57 +356,6 @@ private:
 		
 		return false;
 	}
-
-	bool removeAt(hash_type hash, const K& key) {
-		size_t pos = hash % m_bucketSize;
-		auto *bucket = m_buckets[pos];
-
-		if (bucket->active && bucket->node.key == key) {
-			bucket->active = false;
-			m_size--;
-			bucket->count--;
-			assert(bucket->count >= 0);
-
-			moveToFront(bucket);	//check if we can move the next to the front
-
-			return true;
-		}
-	
-		if (bucket->node.next) {
-			auto *node = bucket->node.next;
-			if (node->key == key) {
-				auto *next_n = node->next;
-				releaseNode(node);
-				bucket->count--;
-				assert(bucket->count >= 0);
-				bucket->node.next = next_n;
-				m_size--;
-
-				return true;
-			}
-			auto *prev = node;
-			node = bucket->node.next->next;
-			while (node != nullptr) {
-
-				if (node->key == key) {
-
-					auto *next_n = node->next;
-					prev->next = next_n;
-					bucket->count--;
-					assert(bucket->count >= 0);
-					m_size--;
-					releaseNode(node);
-					return true;
-				}
-
-				prev = node;
-				node = node->next;
-			}
-		}
-		
-		return false;
-	}
-
 	
 
 	template< typename K >
@@ -278,7 +372,7 @@ private:
 	}
 
 	bool check(Bucket<K, V> *bucket) const {
-		size_t tot = 0;
+		size_type tot = 0;
 		if (bucket->active) {
 			tot = 1;
 
@@ -329,22 +423,22 @@ private:
 		
 		m_buckets.resize(m_bucketSize * 2);
 
-		for (size_t i = m_bucketSize; i < m_bucketSize * 2; i++) {
+		for (size_type i = m_bucketSize; i < m_bucketSize * 2; i++) {
 			m_buckets[i] = new Bucket<K, V>();
 		}
-		size_t old = m_bucketSize;
+		size_type old = m_bucketSize;
 		m_bucketSize *= 2;
 
 		std::vector< std::pair<node_type*, hash_type> > moveNodes;
 		moveNodes.reserve(old);
 		
-		for (size_t i = 0; i < old; i++) {
+		for (size_type i = 0; i < old; i++) {
 			auto *bucket = m_buckets[i];
 			if (bucket->count == 0) continue;
 
 			if (bucket->active) {
 				hash_type h = getHash(bucket->node.key);
-				size_t pos = h % m_bucketSize;
+				size_type pos = h % m_bucketSize;
 				if (pos != i) {
 					auto *node = getNode();				
 					node->key = std::move(bucket->node.key);
@@ -364,7 +458,7 @@ private:
 			while (node) {
 								
 				hash_type h = getHash(node->key);
-				size_t pos = h % m_bucketSize;
+				size_type pos = h % m_bucketSize;
 				auto *next_node = node->next;
 				if (pos != i) {
 					//remove the node from this bucket
@@ -402,7 +496,7 @@ private:
 
 	const_reference	at(K const &key) const {
 		hash_type h = getHash(key);
-		size_t pos = h % m_bucketSize;
+		size_type pos = h % m_bucketSize;
 
 		auto *bucket = m_buckets[pos];
 		if (bucket->active && bucket->node.key == key) {
@@ -421,6 +515,59 @@ private:
 
 	}
 
+	iterator removeAtEx(hash_type hash, const K& key) {
+		size_type pos = hash % m_bucketSize;
+		auto *bucket = m_buckets[pos];
+
+		if (bucket->active && bucket->node.key == key) {
+			bucket->active = false;
+			m_size--;
+			bucket->count--;
+			assert(bucket->count >= 0);
+
+			moveToFront(bucket);	//check if we can move the next to the front
+
+			return bucket->active ? createIterator(&bucket->node, pos) : createIterator(bucket->node.next, pos);
+
+		}
+
+		if (bucket->node.next) {
+			auto *node = bucket->node.next;
+			if (node->key == key) {
+				auto *next_n = node->next;
+				releaseNode(node);
+				bucket->count--;
+				assert(bucket->count >= 0);
+				bucket->node.next = next_n;
+				m_size--;
+
+				return createIterator(next_n, pos);
+			}
+			auto *prev = node;
+			node = bucket->node.next->next;
+			while (node != nullptr) {
+
+				if (node->key == key) {
+
+					auto *next_n = node->next;
+					prev->next = next_n;
+					bucket->count--;
+					assert(bucket->count >= 0);
+					m_size--;
+					releaseNode(node);
+
+					return createIterator(next_n, pos);
+				}
+
+				prev = node;
+				node = node->next;
+			}
+		}
+
+		return end();
+	}
+
+
 	public:
 
 				
@@ -428,186 +575,22 @@ private:
 			return allocator;
 		}
 
-		class iterator {
 
-			friend class HashTable;				
-
-			node_type* findNext() const {
-
-				if (m_lastBucket == m_buckets->size()) {				
-					return nullptr;					
-				}
-
-				auto *bucket = (*m_buckets)[m_lastBucket];
-				if (!m_frontChecked) {
-					if (bucket->active) {						
-						m_frontChecked = true;
-						return &bucket->node;
-					}
-
-					m_frontChecked = true;
-					m_node = nullptr;
-				}
-				
-				auto *node = bucket->node.next;
-				if (node == nullptr) {
-					m_frontChecked = false;
-					m_lastBucket++;
-					return findNext();
-				}
-
-				if (m_frontChecked) {
-					if (m_node == &bucket->node) {
-						m_node = nullptr;
-					}
-				}
-
-				while (node != nullptr) {
-
-					if (m_node && m_node == node) {
-						m_node = m_node->next;
-						break;
-					}
-					if (!m_node) {
-						m_node = node;
-						break;
-					}
-
-					node = node->next;
-				}
-
-
-				if (!m_node) {
-				 	m_lastBucket++;
-					m_frontChecked = false;
-					return findNext();
-				}
-				return m_node;
-			
-			}
 		
-			//end iterator
-			iterator() : 
-				m_buckets(nullptr), 
-				m_lastBucket(0), 
-				m_node(nullptr),
-				m_size(0),
-				m_count(0)
-			{
-			}
-					
-			iterator(node_type *n, 
-				const Bucketvector *ptr, 
-				size_t pos, 
-				size_t tot,
-				bool frontChecked= true) :
-				m_buckets(ptr),
-				m_lastBucket(pos),
-				m_node(n),
-				m_size(tot),
-				m_count(0),
-				m_frontChecked(frontChecked)
-			{
-				if (m_node==nullptr)
-					m_node = findNext();
-			}
-
-			
-		public:
-			iterator operator++() {
-				if (++m_count >= m_size)
-					m_node = nullptr;	
-				else
-					m_node = findNext();
-
-				return *this;
-			}
-			bool operator!=(const iterator &other) const {
-				return m_node != other.m_node;
-			}
-			bool operator==(const iterator &other) const {
-				return m_node == other.m_node;
-			}
-			std::pair<const K&, V&> operator*() const { return { m_node->key,m_node->value }; }
-		private:
-			const Bucketvector *m_buckets;
-			mutable size_t m_lastBucket;
-			size_t m_size;
-			size_t m_count;
-			mutable node_type *m_node;
-			mutable bool m_frontChecked;
-
-		};
-
-		iterator createIterator(node_type *node, size_t pos, bool frontChecked=true) const{
-			return iterator(node, &m_buckets, pos, m_size, frontChecked);
-		}
-
-		iterator removeAtEx(hash_type hash, const K& key) {
-			size_t pos = hash % m_bucketSize;
-			auto *bucket = m_buckets[pos];
-
-			if (bucket->active && bucket->node.key == key) {
-				bucket->active = false;
-				m_size--;
-				bucket->count--;
-				assert(bucket->count >= 0);
-
-				moveToFront(bucket);	//check if we can move the next to the front
-				
-				return bucket->active ? createIterator(&bucket->node, pos): createIterator(bucket->node.next, pos);
-		
-			}
-
-			if (bucket->node.next) {
-				auto *node = bucket->node.next;
-				if (node->key == key) {
-					auto *next_n = node->next;
-					releaseNode(node);
-					bucket->count--;
-					assert(bucket->count >= 0);
-					bucket->node.next = next_n;
-					m_size--;
-
-					return createIterator(next_n, pos);
-				}
-				auto *prev = node;
-				node = bucket->node.next->next;
-				while (node != nullptr) {
-
-					if (node->key == key) {
-
-						auto *next_n = node->next;
-						prev->next = next_n;
-						bucket->count--;
-						assert(bucket->count >= 0);
-						m_size--;
-						releaseNode(node);
-
-						return createIterator(next_n, pos);
-					}
-
-					prev = node;
-					node = node->next;
-				}
-			}
-
-			return end();
-		}
-
 		iterator begin() const {
 			return createIterator(nullptr,0,false);
 		}
 		iterator end() const {
-			return iterator();	
+			return iterator();
 		}
 		
-		explicit HashTable(size_t bucketSize = 20) {
+		explicit HashTable(size_type bucketSize = 20) {
+		
 			m_pool.reserve(20);
-			m_bucketSize =  std::max(bucketSize, (size_t)1);
+			m_bucketSize =  std::max(bucketSize, (size_type)1);
 			m_size = 0;
 			m_buckets.reserve(m_bucketSize);
-			for (size_t i = 0; i < m_bucketSize; i++) {
+			for (size_type i = 0; i < m_bucketSize; i++) {
 				m_buckets.push_back(new Bucket<K, V>());
 			}
 		}
@@ -618,8 +601,8 @@ private:
 		};
 
 		bool check() const{
-			size_t tot = 0;
-			for (size_t i = 0; i < m_bucketSize; i++) {
+			size_type tot = 0;
+			for (size_type i = 0; i < m_bucketSize; i++) {
 				if (!check(m_buckets[i])) return false;
 				tot += m_buckets[i]->count;
 			}
@@ -628,7 +611,7 @@ private:
 		}
 
 		void destroy() {
-			for (size_t i = 0; i < m_bucketSize; i++) {
+			for (size_type i = 0; i < m_bucketSize; i++) {
 				m_buckets[i]->removeNodes(allocator);
 				delete m_buckets[i];
 			}
@@ -675,7 +658,7 @@ private:
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
-			for (size_t i = 0; i < m_bucketSize; i++) {
+			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
 			}
@@ -687,7 +670,7 @@ private:
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
-			for (size_t i = 0; i < m_bucketSize; i++) {
+			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
 			}
@@ -706,17 +689,14 @@ private:
 			}
 		}
 
-		const_reference operator[](const K &key) const {
-			
-			return get(key);
-			
+		const_reference operator[](const K &key) const {			
+			return get(key);			
 		}
 
 		
 		void add(const K& key, const V& value) {
 
 			hash_type hash = getHash(key);
-
 
 			if (updateIfExist(hash, key, value)) {
 				return;
@@ -737,11 +717,11 @@ private:
 		
 	
 
-		size_t size() const {
+		size_type size() const {
 			return m_size;
 		}
 
-		size_t getBucketSize() const {
+		size_type getBucketSize() const {
 			return m_bucketSize;
 		}
 		
@@ -749,7 +729,7 @@ private:
 			
 		iterator find(K const &key) const {
 			hash_type h = getHash(key);
-			size_t pos = h % m_bucketSize;
+			size_type pos = h % m_bucketSize;
 
 			auto *bucket = m_buckets[pos];			
 			if (bucket->active && bucket->node.key == key) {
@@ -777,8 +757,10 @@ private:
 
 	
 		bool remove(K const &key) {
+			size_type temp = m_size;
 			hash_type h = getHash(key);
-			return removeAt(h,key);
+			removeAtEx(h, key);
+			return temp > m_size;
 		}
 
 
@@ -792,7 +774,7 @@ private:
 
 		bool exist(K const &key) const {
 			hash_type h = getHash(key);
-			size_t pos = h % m_bucketSize;
+			size_type pos = h % m_bucketSize;
 			auto *bucket = m_buckets[pos];
 			if (bucket->count == 0) return false;
 			if (bucket->active && bucket->node.key == key) {
@@ -809,16 +791,16 @@ private:
 			return false;
 		}
 
-		//clears and trims down the internal structure to size
-		void clearAndTrim(size_t bucketSize) {
+		//clears and trims down the internal structure to bucketSize
+		void clearAndTrim(size_type bucketSize) {
 			
 			clear();
 			
 			if (bucketSize > m_bucketSize) return;
 
-			bucketSize = std::max(bucketSize, (size_t)1);
+			bucketSize = std::max(bucketSize, (size_type)1);
 
-			for (size_t i = bucketSize; i < m_bucketSize; i++) {
+			for (size_type i = bucketSize; i < m_bucketSize; i++) {
 				delete m_buckets[i];
 			}
 			
@@ -830,7 +812,7 @@ private:
 
 		void clear() {
 
-			for (size_t i = 0; i < m_bucketSize; i++) {
+			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *bucket = m_buckets[i];
 				bucket->removeNodes(allocator);
 			}			
@@ -844,9 +826,17 @@ private:
 			
 		}
 
+
+
+		private:
+
+			Bucketvector m_buckets;
+
+			size_type m_size;	 
+			size_type m_bucketSize; 
+										  
 	};
 
 	
-
 
 
