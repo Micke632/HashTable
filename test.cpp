@@ -6,6 +6,10 @@
 #include <iostream>
 #include <ctime>
 #include <iterator>
+#include <functional>
+#include <numeric>
+
+using namespace stml;
 class XXX
 {
 	int hash;
@@ -442,6 +446,32 @@ TEST(HashMap, Range3) {
 
 	tot = std::distance(h.begin(), h.end());
 	EXPECT_EQ(0, tot);
+
+	h.add(1, 1);
+	h.add(10, 2);
+	h.add(2, 3);
+	h.add(20, 4);
+	h.add(21, 5);
+	h.add(41, 10);
+	h.add(30, 7);	
+
+	auto func = [](auto acc,const auto &pair) {
+		return acc + pair.second;
+	};
+
+	auto sum = std::accumulate(h.begin(), h.end(), 0, func );
+	EXPECT_EQ(32, sum);
+
+		
+	
+	for (int i = 0; i < 10000; i++)
+	{	
+		h.add(42+i, 1);
+	}
+
+	sum = std::accumulate(h.begin(), h.end(), 0, func);
+
+	EXPECT_EQ(10032, sum);
 
 }
 
