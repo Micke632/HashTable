@@ -2,6 +2,7 @@
 
 
 #include <vector>
+#include <functional>
 
 namespace stml {
 
@@ -26,9 +27,27 @@ namespace stml {
 		using reference = V & ;
 		using const_reference = const V&;
 
-		using hash_type = unsigned int;
+		using hash_type = std::size_t;
 
 		std::vector<node_type*, Alloc> m_pool;
+
+		const int MAX_ITEMS_IN_BUCKET = 5;			//rehash
+		const float LOAD_FACTOR = 0.85;				//rehash
+
+		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 500299, 700577, 1300463, 1801529, 3000251 };
+		int m_current = 1;
+		
+		static void setLast(node_type *node_next , node_type *node) {		
+			auto *n = node_next;
+			while (n != nullptr) {
+				node_next = n;
+				n = n->next;
+			}
+			node_next->next = node;
+		}
+		
+	
+		
 
 		template <typename K, typename V >
 		struct Bucket {
@@ -81,13 +100,7 @@ namespace stml {
 					}
 					else {
 						//find end
-						auto *node_next = bucket->node.next;
-						auto *n = node_next;
-						while (n != nullptr) {
-							node_next = n;
-							n = n->next;
-						}
-						node_next->next = node;
+						setLast(bucket->node.next, node);
 					}
 
 				}
@@ -111,15 +124,16 @@ namespace stml {
 
 
 
-		class iterator {
+		class iterator_base {
 
 		public:
+
 			using iterator_category = std::forward_iterator_tag;
 			using value_type = void;
 			using difference_type = size_type;
 			using pointer = void;
 			using reference = void;
-
+		protected:
 			friend class HashTable;
 
 			node_type* findNext() const {
@@ -177,7 +191,7 @@ namespace stml {
 			}
 
 			//end iterator
-			iterator() :
+			iterator_base() :
 				m_buckets(nullptr),
 				m_lastBucket(0),
 				m_node(nullptr),
@@ -186,7 +200,7 @@ namespace stml {
 			{
 			}
 
-			iterator(node_type *n,
+			iterator_base(node_type *n,
 				const bucket_vector *ptr,
 				size_type pos,
 				size_type tot,
@@ -204,6 +218,42 @@ namespace stml {
 
 
 		public:
+					
+
+			bool operator != (const iterator_base &other) const {
+				return m_node != other.m_node;
+			}
+			bool operator == (const iterator_base &other) const {
+				return m_node == other.m_node;
+			}
+	
+						
+		protected:
+			const bucket_vector *m_buckets;
+			mutable size_type m_lastBucket;
+			size_type m_size;
+			size_type m_count;
+			mutable node_type *m_node;
+			mutable bool m_checkedFirst;	//first item in every bucket works different than the rest so a boolean is needed
+
+		};
+
+		class iterator : public iterator_base {
+			
+			friend class HashTable;
+
+			iterator(){}
+			iterator(node_type *n,
+				const bucket_vector *ptr,
+				size_type pos,
+				size_type tot,
+				bool checkedFirst):iterator_base(n,ptr,pos,tot,checkedFirst){
+
+			}
+
+		public:
+			std::pair<const K&, const V&> operator*() const { return { m_node->key,m_node->value }; }
+
 			//pre
 			iterator & operator++() {
 				if (++m_count >= m_size)
@@ -213,6 +263,7 @@ namespace stml {
 
 				return *this;
 			}
+
 			//post
 			iterator operator++(int) {
 
@@ -225,33 +276,16 @@ namespace stml {
 				return it;
 			}
 
-			bool operator!=(const iterator &other) const {
-				return m_node != other.m_node;
-			}
-			bool operator==(const iterator &other) const {
-				return m_node == other.m_node;
-			}
-
-
-
-			std::pair<const K&, V&> operator*() const { return { m_node->key,m_node->value }; }
-		private:
-			const bucket_vector *m_buckets;
-			mutable size_type m_lastBucket;
-			size_type m_size;
-			size_type m_count;
-			mutable node_type *m_node;
-			mutable bool m_checkedFirst;	//first item in every bucket works different than the rest so a boolean is needed
-
 		};
-
-
-
-	private:
-
+	
 		iterator createIterator(node_type *node, size_type pos, bool skipFirst = true) const {
 			return iterator(node, &m_buckets, pos, m_size, skipFirst);
 		}
+
+		iterator createEndIterator() const {
+			return iterator();
+		}
+
 
 		node_type* getNode() {
 			if (!m_pool.empty()) {
@@ -292,16 +326,12 @@ namespace stml {
 					bucket->node.next = node;
 					return;
 				}
-
-				auto *node_next = bucket->node.next;
-				auto *n = node_next;
-				while (n != nullptr) {
-					node_next = n;
-					n = n->next;
-				}
-				node_next->next = node;
+				setLast(bucket->node.next, node);			
 			}
 
+			if (bucket->count >= MAX_ITEMS_IN_BUCKET) {				
+				m_bucketFull = true;
+			}
 		}
 
 		void insert(std::pair<node_type*, hash_type> &node) {
@@ -325,13 +355,8 @@ namespace stml {
 					return;
 				}
 				//find end
-				auto *n = bucket->node.next;
-				auto *node_next = n;
-				while (n != nullptr) {
-					node_next = n;
-					n = n->next;
-				}
-				node_next->next = node.first;
+				setLast(bucket->node.next, node.first);
+			
 
 			}
 		}
@@ -360,17 +385,30 @@ namespace stml {
 
 
 		template< typename K >
-		typename std::enable_if< !std::is_integral< K >::value, hash_type >::type
+		typename std::enable_if< !std::is_integral< K >::value &&  !std::is_pointer< K >::value, hash_type>::type
 			getHash(const K &key) const {
 			hash_type h = key.getHash();
 			return h;
 		}
 
 		template< typename K >
+		typename std::enable_if< !std::is_integral< K >::value && std::is_pointer< K >::value, hash_type>::type
+			getHash(const K &key) const {
+			hash_type h = key->getHash();
+			return h;
+		}
+
+		
+		template< typename K >
 		typename std::enable_if< std::is_integral< K >::value, hash_type >::type
 			getHash(const K &key) const {
 			return key;
 		}
+		//string specialization		
+		hash_type getHash(const std::string &key) const {
+			return std::hash<std::string>{}(key);
+		}
+
 
 		bool check(Bucket<K, V> *bucket) const {
 			size_type tot = 0;
@@ -421,14 +459,22 @@ namespace stml {
 
 
 		void rehash() {
+			
+			size_type newsize = 0;;
+			if (m_current == m_bucketSizes.size() -1) {
+				newsize = m_bucketSize * 2;			//TODO : add more to m_bucketSizes
+			}
+			else {
+				newsize = m_bucketSizes[++m_current];
+			}
+			
+			m_buckets.resize(newsize);
 
-			m_buckets.resize(m_bucketSize * 2);
-
-			for (size_type i = m_bucketSize; i < m_bucketSize * 2; i++) {
+			for (size_type i = m_bucketSize; i < newsize; i++) {
 				m_buckets[i] = new Bucket<K, V>();
 			}
 			size_type old = m_bucketSize;
-			m_bucketSize *= 2;
+			m_bucketSize = newsize;
 
 			std::vector< std::pair<node_type*, hash_type> > moveNodes;
 			moveNodes.reserve(old);
@@ -487,7 +533,7 @@ namespace stml {
 				moveToFront(bucket);
 
 			}
-
+			m_bucketFull = false;
 
 			for (auto &n : moveNodes) {
 				insert(n);
@@ -576,19 +622,38 @@ namespace stml {
 			return allocator;
 		}
 
-
+		
 
 		iterator begin() const {
 			return createIterator(nullptr, 0, false);
 		}
 		iterator end() const {
-			return iterator();
+			return createEndIterator();
 		}
 
-		explicit HashTable(size_type bucketSize = 20) {
+		explicit HashTable(size_type bucketSize = 13) {
+			if (bucketSize != 13) {
+				if (bucketSize <= m_bucketSizes[0]) {
+					bucketSize = m_bucketSizes[0];
+					m_current = 0;
+				}
+				else {
+					int i = 1;
+					for (unsigned int p : m_bucketSizes) {
+						if (bucketSize <= m_bucketSizes[i]) {
+							bucketSize = m_bucketSizes[i];
+							m_current = i;							
+							break;
+						}
+						i++;
+					}
+				}
 
+			}
+		
+			m_bucketFull = false;
 			m_pool.reserve(20);
-			m_bucketSize = std::max(bucketSize, (size_type)1);
+			m_bucketSize = bucketSize;
 			m_size = 0;
 			m_buckets.reserve(m_bucketSize);
 			for (size_type i = 0; i < m_bucketSize; i++) {
@@ -634,6 +699,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets = std::move(other.m_buckets);
+			m_current = other.m_current;
 			other.m_bucketSize = 0;
 			other.m_size = 0;
 		}
@@ -646,6 +712,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets = std::move(other.m_buckets);
+			m_current = other.m_current;
 			other.m_bucketSize = 0;
 			other.m_size = 0;
 
@@ -659,6 +726,8 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
+			m_current = other.m_current;
+
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
@@ -671,6 +740,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
+			m_current = other.m_current;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
@@ -707,10 +777,12 @@ namespace stml {
 
 			m_size++;
 
-			if (m_size > 10) {
-				//just a value so not cause rehash during simple unit tests
+			if (m_size > 20  && m_bucketFull) {
+			
 				float f = (1.0f*m_size) / m_bucketSize;
-				if (f > 0.85) {
+				if (f > LOAD_FACTOR) {
+
+					//rehash when loadfactor is over 85 % and atleast one bucket has 5 elements
 					rehash();
 				}
 			}
@@ -792,20 +864,21 @@ namespace stml {
 			return false;
 		}
 
-		//clears and trims down the internal structure to bucketSize
-		void clearAndTrim(size_type bucketSize) {
+		//clears and trims down the internal structure 
+		void clearAndTrim() {
 
 			clear();
-
-			if (bucketSize > m_bucketSize) return;
-
-			bucketSize = std::max(bucketSize, (size_type)1);
+			
+		
+			m_current = m_current / 2;
+						
+			size_type bucketSize = m_bucketSizes[m_current];
 
 			for (size_type i = bucketSize; i < m_bucketSize; i++) {
 				delete m_buckets[i];
 			}
 
-			m_buckets.resize(bucketSize);
+			m_buckets.resize(m_bucketSize);
 			m_bucketSize = bucketSize;
 
 			m_buckets.shrink_to_fit();
@@ -835,7 +908,7 @@ namespace stml {
 
 		size_type m_size;
 		size_type m_bucketSize;
-
+		bool	  m_bucketFull;
 	};
 
 

@@ -37,7 +37,9 @@ public:
 };
 
 TEST(HashMap, Basic) {
-	HashTable<XXX, int> h(2);
+	HashTable<XXX, int> h(1);
+
+	EXPECT_EQ(3, h.getBucketSize());
 
 	EXPECT_TRUE(h.check());
 
@@ -147,6 +149,31 @@ TEST(HashMap, Basic) {
 	EXPECT_EQ(true, p);
 	EXPECT_EQ(0, h.size());
 	EXPECT_TRUE(h.check());
+
+	{
+		HashTable<XXX, int> h1(3);
+
+		EXPECT_EQ(3, h1.getBucketSize());
+	}
+
+	{
+		HashTable<XXX, int> h1(7);
+
+		EXPECT_EQ(13, h1.getBucketSize());
+	}
+
+	{
+		HashTable<XXX, int> h1;
+
+		EXPECT_EQ(13, h1.getBucketSize());
+	}
+
+	{
+		HashTable<XXX, int> h1(20);
+
+		EXPECT_EQ(97, h1.getBucketSize());
+	}
+
 }
 
 TEST(HashMap, Basic2) {
@@ -189,11 +216,11 @@ TEST(HashMap, Rehash1) {
 	EXPECT_EQ(20, h.size());
 
 
-	for (int i = 50; i < 100; i++) {
+	for (int i = 20; i < 100; i++) {
 		h.add(XXX(i), i);
 	}
 
-	EXPECT_EQ(70, h.size());
+	EXPECT_EQ(100, h.size());
 	EXPECT_TRUE(h.check());
 }
 
@@ -313,6 +340,7 @@ TEST(HashMap, Range) {
 	EXPECT_EQ(it2, h.end());
 }
 
+//OBS this test is using key as hash and 13 as bucketsize
 TEST(HashMap, Range2) {
 	HashTable<int, int> h;
 
@@ -323,68 +351,61 @@ TEST(HashMap, Range2) {
 	h.add(21, 5);
 	h.add(41, 10);
 	h.add(30, 7);
+	h.add(28, 7);
 
-	//key : 1, 21, 41 at bucket 1
+	//key : 2, 41, 28 at bucket 2
 
 	//post
-	HashTable<int, int>::iterator it = h.find(1);
+	HashTable<int, int>::iterator it = h.find(2);
 	it++;
-	EXPECT_EQ(21, (*it).first);
+	EXPECT_EQ(41, (*it).first);
 
 	//pre
-	it = h.find(1);
-	++it;
-	EXPECT_EQ(21, (*it).first);
-
-	//test post
-	it = h.find(1);
-	HashTable<int, int>::iterator iz = it++;
-	EXPECT_EQ(1, (*iz).first);
-	EXPECT_EQ(21, (*it).first);
-
-	//test pre
-	it = h.find(1);
-	iz = ++it;
-	EXPECT_EQ(21, (*iz).first);
-	EXPECT_EQ(21, (*it).first);
-
-
-
-	it = h.find(21);
+	it = h.find(2);
 	++it;
 	EXPECT_EQ(41, (*it).first);
 
-	it = h.find(1);
-	++it;
-	EXPECT_EQ(21, (*it).first);
+	//test post
+	it = h.find(2);
+	HashTable<int, int>::iterator iz = it++;
+	EXPECT_EQ(2, (*iz).first);
+	EXPECT_EQ(41, (*it).first);
 
-	//continue to bucket 2, where key 2 is 
+	//test pre
+	it = h.find(2);
+	iz = ++it;
+	EXPECT_EQ(41, (*iz).first);
+	EXPECT_EQ(41, (*it).first);
+
+
+
 	it = h.find(41);
 	++it;
-	EXPECT_EQ(2, (*it).first);
+	EXPECT_EQ(28, (*it).first);
 
 	it = h.find(2);
 	++it;
-	EXPECT_EQ(10, (*it).first);
+	EXPECT_EQ(41, (*it).first);
 
-	it = h.find(30);
+	//continue to bucket 4, where key 30 is 
+	it = h.find(28);
 	++it;
-	EXPECT_TRUE(it == h.end());
+	EXPECT_EQ(30, (*it).first);
 
-	it = h.find(21);
-	it = h.remove(it);
-	EXPECT_FALSE(h.exist(21));
-	EXPECT_EQ(41, (*it).first);
-
-	it = h.find(1);
-	it = h.remove(it);
-	EXPECT_FALSE(h.exist(1));
-	EXPECT_EQ(41, (*it).first);
-
-	//remove 41
+	it = h.find(41);
 	it = h.remove(it);
 	EXPECT_FALSE(h.exist(41));
-	EXPECT_EQ(2, (*it).first);
+	EXPECT_EQ(28, (*it).first);
+
+	it = h.find(2);
+	it = h.remove(it);
+	EXPECT_FALSE(h.exist(2));
+	EXPECT_EQ(28, (*it).first);
+
+	//remove 28
+	it = h.remove(it);
+	EXPECT_FALSE(h.exist(28));
+	EXPECT_EQ(30, (*it).first);
 
 	it = h.begin();
 	HashTable<int, int>::iterator itEnd = h.end();
@@ -414,6 +435,7 @@ TEST(HashMap, Range2) {
 	h.add(21, 5);
 	h.add(41, 10);
 	h.add(30, 7);
+	h.add(28, 7);
 
 	it = h.begin();
 	itEnd = h.end();
@@ -437,10 +459,10 @@ TEST(HashMap, Range3) {
 	h.add(21, 5);
 	h.add(41, 10);
 	h.add(30, 7);
-
+	h.add(28, 7);
 
 	auto tot = std::distance(h.begin(), h.end());
-	EXPECT_EQ(7, tot);
+	EXPECT_EQ(8, tot);
 
 	h.clear();
 
@@ -454,13 +476,14 @@ TEST(HashMap, Range3) {
 	h.add(21, 5);
 	h.add(41, 10);
 	h.add(30, 7);	
+	h.add(28, 7);
 
 	auto func = [](auto acc,const auto &pair) {
 		return acc + pair.second;
 	};
 
 	auto sum = std::accumulate(h.begin(), h.end(), 0, func );
-	EXPECT_EQ(32, sum);
+	EXPECT_EQ(39, sum);
 
 		
 	
@@ -471,7 +494,7 @@ TEST(HashMap, Range3) {
 
 	sum = std::accumulate(h.begin(), h.end(), 0, func);
 
-	EXPECT_EQ(10032, sum);
+	EXPECT_EQ(10039, sum);
 
 }
 
@@ -633,9 +656,28 @@ TEST(HashMap, Pointer) {
 	delete p;
 	h.clear();
 
+	XXX *ppp = new XXX(1);
+	HashTable<XXX*, int> hh;
+	hh.add(ppp,1);
+
+	int t = hh.get(ppp);
+	EXPECT_EQ(1,t);
 }
 
+TEST(HashMap, string) {
 
+	HashTable<std::string, XXX> h;
+	h.add("hej", XXX(1));
+	h.add("a", XXX(2));
+	h.add("humla", XXX(3));
+	h.add("Pollasdsd", XXX(3));
+
+	EXPECT_EQ(4,h.size());
+	XXX &p = h.get("hej");
+	EXPECT_EQ(1, p.getHash());
+
+
+}
 
 TEST(HashMap, LargeAndTimer) {
 
@@ -698,10 +740,11 @@ TEST(HashMap, LargeAndTimer) {
 	auto end = std::chrono::high_resolution_clock::now();
 	std::chrono::duration<double> diff = end - start;
 	EXPECT_LE(0, sum);
-	EXPECT_GT(0.05, diff.count());
+	EXPECT_GT(0.04, diff.count());
 
-	hh.clearAndTrim(100);
-	EXPECT_EQ(100, hh.getBucketSize());
+	int s= hh.getBucketSize();
+	hh.clearAndTrim();
+	EXPECT_GT(s, hh.getBucketSize());
 
 }
 
