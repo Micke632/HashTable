@@ -878,7 +878,7 @@ namespace stml {
 				delete m_buckets[i];
 			}
 
-			m_buckets.resize(m_bucketSize);
+			m_buckets.resize(bucketSize);
 			m_bucketSize = bucketSize;
 
 			m_buckets.shrink_to_fit();
