@@ -339,6 +339,39 @@ namespace stml {
 			
 		}
 
+
+		void insertMove(hash_type hash, const K& key, V &&value) {
+
+			size_type pos = hash % m_bucketSize;
+			auto *bucket = m_buckets[pos];
+			if (!bucket->active || bucket->count == 0) {
+
+				bucket->node.key = key;
+				bucket->node.value = std::move(value);
+				bucket->count++;
+				bucket->active = true;
+			}
+			else {
+				bucket->count++;
+				auto *node = getNode();
+
+				node->key = key;
+				node->value = std::move(value);
+				node->next = nullptr;
+				if (bucket->node.next == nullptr) {
+					bucket->node.next = node;
+					return;
+				}
+				setLast(bucket->node.next, node);
+
+
+				if (bucket->count >= MAX_ITEMS_IN_BUCKET) {
+					m_bucketFull = true;
+				}
+			}
+
+		}
+
 		void insert(std::pair<node_type*, hash_type> &node) {
 
 			assert(node.first->next == nullptr);
@@ -387,6 +420,28 @@ namespace stml {
 
 			return false;
 		}
+
+		bool updateIfExistMove(hash_type hash, const K &key, V &&value) {
+			size_type pos = hash % m_bucketSize;
+			auto *bucket = m_buckets[pos];
+
+			if (bucket->active && bucket->node.key == key) {
+				bucket->node.value = std::move(value);
+				return true;
+			}
+			auto *node = bucket->node.next;
+
+			while (node != nullptr) {
+				if (node->key == key) {
+					node->value = std::move(value);
+					return true;
+				}
+				node = node->next;
+			}
+
+			return false;
+		}
+
 
 
 		template< typename K >
@@ -787,7 +842,30 @@ namespace stml {
 				float f = (1.0f*m_size) / m_bucketSize;
 				if (f > LOAD_FACTOR) {
 
-					//rehash when loadfactor is over 85 % and atleast one bucket has 5 elements
+					//rehash when loadfactor is over 85 % and atleast one bucket has x elements
+					rehash();
+				}
+			}
+		}
+		
+		void add(const K& key, V &&value) {
+
+			hash_type hash = getHash(key);
+
+			if (updateIfExistMove(hash, key, std::move(value))) {
+				return;
+			}
+
+			insertMove(hash, key, std::move(value));
+
+			m_size++;
+
+			if (m_size > 20 && m_bucketFull) {
+
+				float f = (1.0f*m_size) / m_bucketSize;
+				if (f > LOAD_FACTOR) {
+
+					//rehash when loadfactor is over 85 % and atleast one bucket has x elements
 					rehash();
 				}
 			}
