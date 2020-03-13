@@ -31,13 +31,16 @@ namespace stml {
 
 		std::vector<node_type*, Alloc> m_pool;
 
-		const int MAX_ITEMS_IN_BUCKET = 5;			//rehash
-		const float LOAD_FACTOR = 0.85;				//rehash
+		const int MAX_ITEMS_IN_BUCKET = 3;			
+		const float LOAD_FACTOR = 0.85;				
 
 		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 500299, 700577, 1300463, 1801529, 3000251 };
-		int m_current = 1;
+		unsigned int m_currentBucketSizeIndex = 1;		//default 13
 		
-		static void setLast(node_type *node_next , node_type *node) {		
+		std::hash<std::string> m_stringHasher;
+
+		static void setLast(node_type *node_next , node_type *node) {					
+
 			auto *n = node_next;
 			while (n != nullptr) {
 				node_next = n;
@@ -326,12 +329,14 @@ namespace stml {
 					bucket->node.next = node;
 					return;
 				}
-				setLast(bucket->node.next, node);			
-			}
+				setLast(bucket->node.next, node);		
 
-			if (bucket->count >= MAX_ITEMS_IN_BUCKET) {				
-				m_bucketFull = true;
-			}
+
+				if (bucket->count >= MAX_ITEMS_IN_BUCKET) {
+					m_bucketFull = true;
+				}
+			}			
+			
 		}
 
 		void insert(std::pair<node_type*, hash_type> &node) {
@@ -404,9 +409,9 @@ namespace stml {
 			getHash(const K &key) const {
 			return key;
 		}
-		//string specialization		
+		//string overloading
 		hash_type getHash(const std::string &key) const {
-			return std::hash<std::string>{}(key);
+			return m_stringHasher(key);
 		}
 
 
@@ -461,11 +466,11 @@ namespace stml {
 		void rehash() {
 			
 			size_type newsize = 0;;
-			if (m_current == m_bucketSizes.size() -1) {
+			if (m_currentBucketSizeIndex == m_bucketSizes.size() -1) {
 				newsize = m_bucketSize * 2;			//TODO : add more to m_bucketSizes
 			}
 			else {
-				newsize = m_bucketSizes[++m_current];
+				newsize = m_bucketSizes[++m_currentBucketSizeIndex];
 			}
 			
 			m_buckets.resize(newsize);
@@ -635,14 +640,14 @@ namespace stml {
 			if (bucketSize != 13) {
 				if (bucketSize <= m_bucketSizes[0]) {
 					bucketSize = m_bucketSizes[0];
-					m_current = 0;
+					m_currentBucketSizeIndex = 0;
 				}
 				else {
-					int i = 1;
+					unsigned int i = 1;
 					for (unsigned int p : m_bucketSizes) {
 						if (bucketSize <= m_bucketSizes[i]) {
 							bucketSize = m_bucketSizes[i];
-							m_current = i;							
+							m_currentBucketSizeIndex = i;
 							break;
 						}
 						i++;
@@ -699,7 +704,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets = std::move(other.m_buckets);
-			m_current = other.m_current;
+			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 			other.m_bucketSize = 0;
 			other.m_size = 0;
 		}
@@ -712,7 +717,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets = std::move(other.m_buckets);
-			m_current = other.m_current;
+			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 			other.m_bucketSize = 0;
 			other.m_size = 0;
 
@@ -726,7 +731,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
-			m_current = other.m_current;
+			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
@@ -740,7 +745,7 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
-			m_current = other.m_current;
+			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
@@ -754,7 +759,7 @@ namespace stml {
 				return get(key);
 			}
 			else {
-				V v = {};
+				V v{};
 				add(key, v);
 				return get(key);
 			}
@@ -870,9 +875,9 @@ namespace stml {
 			clear();
 			
 		
-			m_current = m_current / 2;
+			m_currentBucketSizeIndex = m_currentBucketSizeIndex / 2;
 						
-			size_type bucketSize = m_bucketSizes[m_current];
+			size_type bucketSize = m_bucketSizes[m_currentBucketSizeIndex];
 
 			for (size_type i = bucketSize; i < m_bucketSize; i++) {
 				delete m_buckets[i];
