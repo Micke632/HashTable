@@ -24,7 +24,7 @@ namespace stml {
 		};
 		using node_type = Node<K, V>;
 		using node_allocator = typename Alloc::template rebind<node_type>::other;
-		node_allocator allocator;
+		node_allocator m_allocator;
 		using reference = V & ;
 		using const_reference = const V&;
 
@@ -301,7 +301,7 @@ namespace stml {
 
 			}
 
-			auto *node = allocator.allocate(1);
+			auto *node = m_allocator.allocate(1);
 			//allocator.construct(node);
 			return node;
 		}
@@ -409,17 +409,15 @@ namespace stml {
 			pos = calcPos(hash);
 			auto *bucket = m_buckets[pos];
 
-			if (bucket->active && bucket->node.key == key) {
+			if (bucket->active && bucket->node.hash == hash) {
 				bucket->node.value = value;
-				bucket->node.hash = hash;
 				return true;
 			}
 			auto *node = bucket->node.next;
 
 			while (node != nullptr) {
-				if (node->key == key) {
+				if (node->hash == hash) {
 					node->value = value;
-					node->hash = hash;
 					return true;
 				}
 				node = node->next;
@@ -434,17 +432,15 @@ namespace stml {
 
 			auto *bucket = m_buckets[pos];
 
-			if (bucket->active && bucket->node.key == key) {
+			if (bucket->active && bucket->node.hash == hash) {
 				bucket->node.value = std::move(value);
-				bucket->node.hash = hash;
 				return true;
 			}
 			auto *node = bucket->node.next;
 
 			while (node != nullptr) {
-				if (node->key == key) {
-					node->value = std::move(value);
-					node->hash = hash;
+				if (node->hash == hash) {
+					node->value = std::move(value);				
 					return true;
 				}
 				node = node->next;
@@ -617,13 +613,13 @@ namespace stml {
 			size_type pos = calcPos(hash);
 
 			auto *bucket = m_buckets[pos];
-			if (bucket->active && bucket->node.key == key) {
+			if (bucket->active && bucket->node.hash == hash) {
 				return bucket->node.value;
 			}
 			auto *node = bucket->node.next;
 
 			while (node != nullptr) {
-				if (node->key == key) {
+				if (node->hash == hash) {
 					return node->value;
 				}
 				node = node->next;
@@ -637,7 +633,7 @@ namespace stml {
 			size_type pos = calcPos(hash);
 			auto *bucket = m_buckets[pos];
 
-			if (bucket->active && bucket->node.key == key) {
+			if (bucket->active && bucket->node.hash == hash) {
 				bucket->active = false;
 				m_size--;
 				bucket->count--;
@@ -651,7 +647,7 @@ namespace stml {
 
 			if (bucket->node.next) {
 				auto *node = bucket->node.next;
-				if (node->key == key) {
+				if (node->hash == hash) {
 					auto *next_n = node->next;
 					releaseNode(node);
 					bucket->count--;
@@ -665,7 +661,7 @@ namespace stml {
 				node = bucket->node.next->next;
 				while (node != nullptr) {
 
-					if (node->key == key) {
+					if (node->hash == hash) {
 
 						auto *next_n = node->next;
 						prev->next = next_n;
@@ -690,7 +686,7 @@ namespace stml {
 
 
 		node_allocator & get_allocator() {
-			return allocator;
+			return m_allocator;
 		}
 
 		
@@ -770,7 +766,7 @@ namespace stml {
 
 		void destroy() {
 			for (size_type i = 0; i < m_bucketSize; i++) {
-				m_buckets[i]->removeNodes(allocator);
+				m_buckets[i]->removeNodes(m_allocator);
 				delete m_buckets[i];
 			}
 			m_buckets.clear();
@@ -778,8 +774,8 @@ namespace stml {
 			m_size = 0;
 
 			while (!m_pool.empty()) {
-				allocator.destroy(m_pool.back());
-				allocator.deallocate(m_pool.back(), 1);
+				m_allocator.destroy(m_pool.back());
+				m_allocator.deallocate(m_pool.back(), 1);
 				m_pool.pop_back();
 			}
 
@@ -967,12 +963,12 @@ namespace stml {
 			size_type pos = calcPos(hash);
 			auto *bucket = m_buckets[pos];
 			if (bucket->count == 0) return false;
-			if (bucket->active && bucket->node.key == key) {
+			if (bucket->active && bucket->node.hash == hash) {
 				return true;
 			}
 			auto *node = bucket->node.next;
 			while (node != nullptr) {
-				if (node->key == key) {
+				if (node->hash == hash) {
 					return true;
 				}
 				node = node->next;
@@ -1005,13 +1001,13 @@ namespace stml {
 
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *bucket = m_buckets[i];
-				bucket->removeNodes(allocator);
+				bucket->removeNodes(m_allocator);
 			}
 			m_size = 0;
 
 			while (!m_pool.empty()) {
-				allocator.destroy(m_pool.back());
-				allocator.deallocate(m_pool.back(), 1);
+				m_allocator.destroy(m_pool.back());
+				m_allocator.deallocate(m_pool.back(), 1);
 				m_pool.pop_back();
 			}
 
