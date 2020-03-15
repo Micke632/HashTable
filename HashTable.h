@@ -34,9 +34,9 @@ namespace stml {
 		const int MAX_ITEMS_IN_BUCKET = 3;			
 		const float LOAD_FACTOR = 0.85;				
 
-		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 500299, 700577, 1300463, 1801529, 3000251 };
-		unsigned int m_currentBucketSizeIndex = 1;		//default 13
-		
+		const std::vector<unsigned int> m_bucketSizes = { 4, 16, 64, 128, 512, 1024, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152 };
+		//const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 500299, 700577, 1300463, 1801529, 3000251 };
+		unsigned int m_currentBucketSizeIndex = 1;		//default 16
 		std::hash<std::string> m_stringHasher;
 
 		static void setLast(node_type *node_next , node_type *node) {					
@@ -50,7 +50,9 @@ namespace stml {
 		}
 		
 	
-		
+		size_type calcPos(hash_type hash) const {
+			return hash & m_bucketSize -1;
+		}
 
 		template <typename K, typename V >
 		struct Bucket {
@@ -113,8 +115,8 @@ namespace stml {
 				return bucket;
 			}
 
-			unsigned short count;
-			bool active;
+			unsigned short count;		//nr of elements in this bucket. Not really used and can be removed
+			bool active;		   // flag if the first node is used ( it is not in the linked list)
 			Node<K, V> node;
 
 		};
@@ -255,7 +257,7 @@ namespace stml {
 			}
 
 		public:
-			std::pair<const K&, const V&> operator*() const { return { m_node->key,m_node->value }; }
+			std::pair<const K&, V&> operator*() const { return { m_node->key,m_node->value }; }
 
 			//pre
 			iterator & operator++() {
@@ -307,9 +309,8 @@ namespace stml {
 			m_pool.push_back(node);
 		}
 
-		void insert(hash_type hash, const K& key, const V& value) {
+		void insert(size_type pos, const K& key, const V& value) {
 
-			size_type pos = hash % m_bucketSize;
 			auto *bucket = m_buckets[pos];
 			if (!bucket->active || bucket->count == 0) {
 
@@ -340,9 +341,8 @@ namespace stml {
 		}
 
 
-		void insertMove(hash_type hash, const K& key, V &&value) {
+		void insertMove(size_type pos,const K& key, V &&value) {
 
-			size_type pos = hash % m_bucketSize;
 			auto *bucket = m_buckets[pos];
 			if (!bucket->active || bucket->count == 0) {
 
@@ -376,7 +376,7 @@ namespace stml {
 
 			assert(node.first->next == nullptr);
 
-			size_type pos = node.second % m_bucketSize;
+			size_type pos = calcPos(node.second);
 
 			auto *bucket = m_buckets[pos];
 			if (!bucket->active || bucket->count == 0) {
@@ -400,8 +400,8 @@ namespace stml {
 		}
 
 
-		bool updateIfExist(hash_type hash, const K &key, const V &value) {
-			size_type pos = hash % m_bucketSize;
+		bool updateIfExist(hash_type hash, const K &key, const V &value, size_type &pos) {
+			pos = calcPos(hash);
 			auto *bucket = m_buckets[pos];
 
 			if (bucket->active && bucket->node.key == key) {
@@ -421,8 +421,10 @@ namespace stml {
 			return false;
 		}
 
-		bool updateIfExistMove(hash_type hash, const K &key, V &&value) {
-			size_type pos = hash % m_bucketSize;
+		bool updateIfExistMove(hash_type hash, const K &key, V &&value, size_type &pos) {
+
+			pos = calcPos(hash);
+
 			auto *bucket = m_buckets[pos];
 
 			if (bucket->active && bucket->node.key == key) {
@@ -545,7 +547,7 @@ namespace stml {
 
 				if (bucket->active) {
 					hash_type hash = getHash(bucket->node.key);
-					size_type pos = hash % m_bucketSize;
+					size_type pos = calcPos(hash);
 					if (pos != i) {
 						auto *node = getNode();
 						node->key = std::move(bucket->node.key);
@@ -565,7 +567,7 @@ namespace stml {
 				while (node) {
 
 					hash_type hash = getHash(node->key);
-					size_type pos = hash % m_bucketSize;
+					size_type pos = calcPos(hash);
 					auto *next_node = node->next;
 					if (pos != i) {
 						//remove the node from this bucket
@@ -603,7 +605,7 @@ namespace stml {
 
 		const_reference	at(K const &key) const {
 			hash_type hash = getHash(key);
-			size_type pos = hash % m_bucketSize;
+			size_type pos = calcPos(hash);
 
 			auto *bucket = m_buckets[pos];
 			if (bucket->active && bucket->node.key == key) {
@@ -623,7 +625,7 @@ namespace stml {
 		}
 
 		iterator removeAtEx(hash_type hash, const K& key) {
-			size_type pos = hash % m_bucketSize;
+			size_type pos = calcPos(hash);
 			auto *bucket = m_buckets[pos];
 
 			if (bucket->active && bucket->node.key == key) {
@@ -688,11 +690,11 @@ namespace stml {
 			return createIterator(nullptr, 0, false);
 		}
 		iterator end() const {
-			return createEndIterator();
+			return m_end;
 		}
 
-		explicit HashTable(size_type bucketSize = 13) {
-			if (bucketSize != 13) {
+		explicit HashTable(size_type bucketSize = 16) {
+			if (bucketSize != 16) {
 				if (bucketSize <= m_bucketSizes[0]) {
 					bucketSize = m_bucketSizes[0];
 					m_currentBucketSizeIndex = 0;
@@ -735,6 +737,27 @@ namespace stml {
 
 			return tot == m_size;
 		}
+
+		std::tuple<size_type, size_type, size_type> bucketInfo() const {
+			size_type empty = 0;
+			size_type one = 0;
+			size_type more = 0;
+			for (size_type i = 0; i < m_bucketSize; i++) {
+				if (m_buckets[i]->count == 0) {
+					empty++;
+				}
+				else if (m_buckets[i]->count == 1) {
+					one++;
+				}
+				else {
+					more++;
+				}
+				
+			}
+			return { empty,one,more };
+			
+		}
+
 
 		void destroy() {
 			for (size_type i = 0; i < m_bucketSize; i++) {
@@ -828,12 +851,13 @@ namespace stml {
 		void add(const K& key, const V& value) {
 
 			hash_type hash = getHash(key);
+			size_type pos;
 
-			if (updateIfExist(hash, key, value)) {
+			if (updateIfExist(hash,key,value,pos)) {
 				return;
 			}
 
-			insert(hash, key, value);
+			insert(pos, key, value);
 
 			m_size++;
 
@@ -852,11 +876,12 @@ namespace stml {
 
 			hash_type hash = getHash(key);
 
-			if (updateIfExistMove(hash, key, std::move(value))) {
+			size_type pos;
+			if (updateIfExistMove(hash, key, std::move(value), pos)) {
 				return;
 			}
 
-			insertMove(hash, key, std::move(value));
+			insertMove(pos, key, std::move(value));
 
 			m_size++;
 
@@ -885,7 +910,7 @@ namespace stml {
 
 		iterator find(K const &key) const {
 			hash_type hash = getHash(key);
-			size_type pos = hash % m_bucketSize;
+			size_type pos = calcPos(hash);
 
 			auto *bucket = m_buckets[pos];
 			if (bucket->active && bucket->node.key == key) {
@@ -930,7 +955,7 @@ namespace stml {
 
 		bool exist(K const &key) const {
 			hash_type hash = getHash(key);
-			size_type pos = hash % m_bucketSize;
+			size_type pos = calcPos(hash);
 			auto *bucket = m_buckets[pos];
 			if (bucket->count == 0) return false;
 			if (bucket->active && bucket->node.key == key) {
@@ -988,7 +1013,7 @@ namespace stml {
 	private:
 
 		bucket_vector m_buckets;
-
+		iterator	m_end;		//end() iterator 
 		size_type m_size;
 		size_type m_bucketSize;
 		bool	  m_bucketFull;
