@@ -31,12 +31,12 @@ namespace stml {
 
 		std::vector<node_type*, Alloc> m_pool;
 
-		const int MAX_ITEMS_IN_BUCKET = 10;			
+		const int MAX_ITEMS_IN_BUCKET = 7;			
 		const double LOAD_FACTOR = 0.90;				
 
 		//const std::vector<size_type> m_bucketSizes = { 4, 16, 64, 128, 512, 1024, 4096, 8192, 16384, 32768, 65536, 131072,  524288, 1048576, 2097152 };
-		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 500299,  1300463, 2613229,4148279 };
-		unsigned int m_currentBucketSizeIndex = 1;		//default 16
+		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 518509,  1306601, 2613229,4148279 };
+		unsigned int m_currentBucketSizeIndex = 1;		
 		std::hash<std::string> m_stringHasher;
 
 		static int setLast(node_type *node_next , node_type *node) {					
@@ -52,6 +52,8 @@ namespace stml {
 			return i;
 		}
 
+		//copied from flat_hash_map by  Malte Skarupke 
+		//faster modulo..
 		struct prime_number_hash_policy
 		{
 			static size_t mod0(size_t) { return 0llu; }
@@ -66,23 +68,112 @@ namespace stml {
 			static size_t mod29(size_t hash) { return hash % 29llu; }
 			static size_t mod37(size_t hash) { return hash % 37llu; }
 			static size_t mod47(size_t hash) { return hash % 47llu; }
-
+			static size_t mod59(size_t hash) { return hash % 59llu; }
+			static size_t mod73(size_t hash) { return hash % 73llu; }
+			static size_t mod97(size_t hash) { return hash % 97llu; }
+			static size_t mod127(size_t hash) { return hash % 127llu; }
+			static size_t mod151(size_t hash) { return hash % 151llu; }
+			static size_t mod197(size_t hash) { return hash % 197llu; }
+			static size_t mod251(size_t hash) { return hash % 251llu; }
+			static size_t mod313(size_t hash) { return hash % 313llu; }
+			static size_t mod397(size_t hash) { return hash % 397llu; }
+			static size_t mod499(size_t hash) { return hash % 499llu; }
+			static size_t mod631(size_t hash) { return hash % 631llu; }
+			static size_t mod797(size_t hash) { return hash % 797llu; }
+			static size_t mod1009(size_t hash) { return hash % 1009llu; }
+			static size_t mod1259(size_t hash) { return hash % 1259llu; }
+			static size_t mod1597(size_t hash) { return hash % 1597llu; }
+			static size_t mod2011(size_t hash) { return hash % 2011llu; }
+			static size_t mod2539(size_t hash) { return hash % 2539llu; }
+			static size_t mod3203(size_t hash) { return hash % 3203llu; }
+			static size_t mod4027(size_t hash) { return hash % 4027llu; }
+			static size_t mod5087(size_t hash) { return hash % 5087llu; }
+			static size_t mod6421(size_t hash) { return hash % 6421llu; }
+			static size_t mod8089(size_t hash) { return hash % 8089llu; }
+			static size_t mod10193(size_t hash) { return hash % 10193llu; }
+			static size_t mod12853(size_t hash) { return hash % 12853llu; }
+			static size_t mod16193(size_t hash) { return hash % 16193llu; }
+			static size_t mod20399(size_t hash) { return hash % 20399llu; }
+			static size_t mod25717(size_t hash) { return hash % 25717llu; }
+			static size_t mod32401(size_t hash) { return hash % 32401llu; }
+			static size_t mod40823(size_t hash) { return hash % 40823llu; }
+			static size_t mod51437(size_t hash) { return hash % 51437llu; }
+			static size_t mod64811(size_t hash) { return hash % 64811llu; }
+			static size_t mod81649(size_t hash) { return hash % 81649llu; }
+			static size_t mod102877(size_t hash) { return hash % 102877llu; }
+			static size_t mod129607(size_t hash) { return hash % 129607llu; }
+			static size_t mod163307(size_t hash) { return hash % 163307llu; }
+			static size_t mod205759(size_t hash) { return hash % 205759llu; }
+			static size_t mod259229(size_t hash) { return hash % 259229llu; }
+			static size_t mod326617(size_t hash) { return hash % 326617llu; }
+			static size_t mod411527(size_t hash) { return hash % 411527llu; }
+			static size_t mod518509(size_t hash) { return hash % 518509llu; }
+			static size_t mod653267(size_t hash) { return hash % 653267llu; }
+			static size_t mod823117(size_t hash) { return hash % 823117llu; }
+			static size_t mod1037059(size_t hash) { return hash % 1037059llu; }
+			static size_t mod1306601(size_t hash) { return hash % 1306601llu; }
+			static size_t mod1646237(size_t hash) { return hash % 1646237llu; }
+			static size_t mod2074129(size_t hash) { return hash % 2074129llu; }
+			static size_t mod2613229(size_t hash) { return hash % 2613229llu; }
+			static size_t mod3292489(size_t hash) { return hash % 3292489llu; }
+			static size_t mod4148279(size_t hash) { return hash % 4148279llu; }
+			static size_t mod5226491(size_t hash) { return hash % 5226491llu; }
+			static size_t mod6584983(size_t hash) { return hash % 6584983llu; }
+			static size_t mod8296553(size_t hash) { return hash % 8296553llu; }
+			static size_t mod10453007(size_t hash) { return hash % 10453007llu; }
+			static size_t mod13169977(size_t hash) { return hash % 13169977llu; }
+			static size_t mod16593127(size_t hash) { return hash % 16593127llu; }
+			static size_t mod20906033(size_t hash) { return hash % 20906033llu; }
+			static size_t mod26339969(size_t hash) { return hash % 26339969llu; }
+			static size_t mod33186281(size_t hash) { return hash % 33186281llu; }
+			static size_t mod41812097(size_t hash) { return hash % 41812097llu; }
+			static size_t mod52679969(size_t hash) { return hash % 52679969llu; }
+			static size_t mod66372617(size_t hash) { return hash % 66372617llu; }
+			static size_t mod83624237(size_t hash) { return hash % 83624237llu; }
+			static size_t mod105359939(size_t hash) { return hash % 105359939llu; }
+			static size_t mod132745199(size_t hash) { return hash % 132745199llu; }
+			static size_t mod167248483(size_t hash) { return hash % 167248483llu; }
+			static size_t mod210719881(size_t hash) { return hash % 210719881llu; }
+			static size_t mod265490441(size_t hash) { return hash % 265490441llu; }
+			static size_t mod334496971(size_t hash) { return hash % 334496971llu; }
+			static size_t mod421439783(size_t hash) { return hash % 421439783llu; }
+			static size_t mod530980861(size_t hash) { return hash % 530980861llu; }
+			static size_t mod668993977(size_t hash) { return hash % 668993977llu; }
+			static size_t mod842879579(size_t hash) { return hash % 842879579llu; }
+			static size_t mod1061961721(size_t hash) { return hash % 1061961721llu; }
+			static size_t mod1337987929(size_t hash) { return hash % 1337987929llu; }
+			static size_t mod1685759167(size_t hash) { return hash % 1685759167llu; }
+			static size_t mod2123923447(size_t hash) { return hash % 2123923447llu; }
+			static size_t mod2675975881(size_t hash) { return hash % 2675975881llu; }
+			static size_t mod3371518343(size_t hash) { return hash % 3371518343llu; }
+			static size_t mod4247846927(size_t hash) { return hash % 4247846927llu; }
+			static size_t mod5351951779(size_t hash) { return hash % 5351951779llu; }
+			static size_t mod6743036717(size_t hash) { return hash % 6743036717llu; }
+			static size_t mod8495693897(size_t hash) { return hash % 8495693897llu; }
+			static size_t mod10703903591(size_t hash) { return hash % 10703903591llu; }
+			static size_t mod13486073473(size_t hash) { return hash % 13486073473llu; }
+			static size_t mod16991387857(size_t hash) { return hash % 16991387857llu; }
+			static size_t mod21407807219(size_t hash) { return hash % 21407807219llu; }
+			static size_t mod26972146961(size_t hash) { return hash % 26972146961llu; }
+			static size_t mod33982775741(size_t hash) { return hash % 33982775741llu; }
+			static size_t mod42815614441(size_t hash) { return hash % 42815614441llu; }
+			static size_t mod53944293929(size_t hash) { return hash % 53944293929llu; }
 			using mod_function = size_t(*)(size_t);
 
 			mod_function next_size_over(size_t & size) const
 			{
-				// prime numbers generated by the following method:
-				// 1. start with a prime p = 2
-				// 2. go to wolfram alpha and get p = NextPrime(2 * p)
-				// 3. repeat 2. until you overflow 64 bits
-				// you now have large gaps which you would hit if somebody called reserve() with an unlucky number.
-				// 4. to fill the gaps for every prime p go to wolfram alpha and get ClosestPrime(p * 2^(1/3)) and ClosestPrime(p * 2^(2/3)) and put those in the gaps
-				// 5. get PrevPrime(2^64) and put it at the end
+				
 				static constexpr const size_t prime_list[] =
 				{
 					2llu, 3llu, 5llu, 7llu, 11llu, 13llu, 17llu, 23llu, 29llu, 37llu, 47llu,
 					59llu, 73llu, 97llu, 127llu, 151llu, 197llu, 251llu, 313llu, 397llu,
-					499llu, 631llu, 797llu, 1009llu, 1259llu, 1597llu, 2011llu, 2539llu
+					499llu, 631llu, 797llu, 1009llu, 1259llu, 1597llu, 2011llu, 2539llu,
+					3203llu, 4027llu, 5087llu, 6421llu, 8089llu, 10193llu, 12853llu, 16193llu,
+					20399llu, 25717llu, 32401llu, 40823llu, 51437llu, 64811llu, 81649llu,
+					102877llu, 129607llu, 163307llu, 205759llu, 259229llu, 326617llu,
+					411527llu, 518509llu, 653267llu, 823117llu, 1037059llu, 1306601llu,
+					1646237llu, 2074129llu, 2613229llu, 3292489llu, 4148279llu, 5226491llu,
+					6584983llu, 8296553llu, 10453007llu, 13169977llu, 16593127llu, 20906033llu
 				};
 
 				static constexpr size_t(*const mod_functions[])(size_t) =
@@ -90,7 +181,19 @@ namespace stml {
 					&mod0, &mod2, &mod3, &mod5, &mod7, &mod11, &mod13, &mod17, &mod23, &mod29, &mod37,
 					&mod47, &mod59, &mod73, &mod97, &mod127, &mod151, &mod197, &mod251, &mod313, &mod397,
 					&mod499, &mod631, &mod797, &mod1009, &mod1259, &mod1597, &mod2011, &mod2539, &mod3203,
-					&mod4027, &mod5087, &mod6421, &mod8089, &mod10193, &mod12853, &mod16193, &mod20399
+					&mod4027, &mod5087, &mod6421, &mod8089, &mod10193, &mod12853, &mod16193, &mod20399,
+					&mod25717, &mod32401, &mod40823, &mod51437, &mod64811, &mod81649, &mod102877,
+					&mod129607, &mod163307, &mod205759, &mod259229, &mod326617, &mod411527, &mod518509,
+					&mod653267, &mod823117, &mod1037059, &mod1306601, &mod1646237, &mod2074129,
+					&mod2613229, &mod3292489, &mod4148279, &mod5226491, &mod6584983, &mod8296553,
+					&mod10453007, &mod13169977, &mod16593127, &mod20906033, &mod26339969, &mod33186281,
+					&mod41812097, &mod52679969, &mod66372617, &mod83624237, &mod105359939, &mod132745199,
+					&mod167248483, &mod210719881, &mod265490441, &mod334496971, &mod421439783,
+					&mod530980861, &mod668993977, &mod842879579, &mod1061961721, &mod1337987929,
+					&mod1685759167, &mod2123923447, &mod2675975881, &mod3371518343, &mod4247846927,
+					&mod5351951779, &mod6743036717, &mod8495693897, &mod10703903591, &mod13486073473,
+					&mod16991387857, &mod21407807219, &mod26972146961, &mod33982775741, &mod42815614441,
+					&mod53944293929
 				};
 				const size_t * found = std::lower_bound(std::begin(prime_list), std::end(prime_list) - 1, size);
 				size = *found;
@@ -105,7 +208,7 @@ namespace stml {
 					current_mod_function = &mod0;
 				}
 
-				size_t index_for_hash(size_t hash, size_t /*num_slots_minus_one*/) const
+				size_t index_for_hash(size_t hash) const
 				{
 					return current_mod_function(hash);
 				}
@@ -119,7 +222,9 @@ namespace stml {
 		};
 	
 		size_type calcPos(hash_type hash) const {
-			return hash % m_bucketSize ;		
+
+			return hash_policy.index_for_hash(hash);
+			//return hash % m_bucketSize ;		
 		}
 
 		prime_number_hash_policy hash_policy;
@@ -486,17 +591,22 @@ namespace stml {
 		void rehash() {
 			m_nonemptyCount = 0;
 		
-			size_type newsize = 0;;
+			size_type newsize = 0;
 
-		//	hash_policy.next_size_over(num_buckets);
 			
 			if (m_currentBucketSizeIndex == m_bucketSizes.size() -1) {
-				newsize = m_bucketSize * 2;			//TODO : add more to m_bucketSizes
+				newsize = m_bucketSize * 2;			
 			}
 			else {
 				newsize = m_bucketSizes[++m_currentBucketSizeIndex];
 			}
+			size_t sizeFromPrim = newsize;
+
+			//get a size 
+			auto new_prime_index = hash_policy.next_size_over(sizeFromPrim);
+			newsize = sizeFromPrim;
 			
+			hash_policy.commit(new_prime_index);
 
 			m_buckets.resize(newsize);
 
@@ -514,26 +624,29 @@ namespace stml {
 			for (size_type i = 0; i < old; i++) {
 				auto *bucket = m_buckets[i];
 			
-				if (bucket->active) {			
-					size_type newPos = calcPos(bucket->node.hash);
-					if (newPos != i) {
-						auto *node = getNode();
-						node->key = std::move(bucket->node.key);
-						node->value = std::move(bucket->node.value);
-						node->hash = bucket->node.hash;
-						node->next = nullptr;
-						bucket->active = false;
-					
-						moveNodes.emplace_back(node, newPos);
-					}
-				}
-
-				auto *HOME = bucket->node.next;  	//points to bucket->node.next
 				auto *node = bucket->node.next;
-				auto *prev = bucket->node.next;		//points to previos active node
+
 				if (!node && !bucket->active) {
 					empty++;
 				}
+
+				if (bucket->active) {			
+					size_type newPos = calcPos(bucket->node.hash);
+					if (newPos != i) {
+						auto *newnode = getNode();
+						newnode->key = std::move(bucket->node.key);
+						newnode->value = std::move(bucket->node.value);
+						newnode->hash = bucket->node.hash;
+						newnode->next = nullptr;
+						bucket->active = false;
+					
+						moveNodes.emplace_back(newnode, newPos);
+					}
+				}
+
+				auto *HOME = bucket->node.next;  	//points to bucket->node.next				
+				auto *prev = bucket->node.next;		//points to previos active node
+			
 				while (node) {
 								
 					size_type newPos = calcPos(node->hash);
@@ -660,8 +773,8 @@ namespace stml {
 			return m_end;
 		}
 
-		explicit HashTable(size_type bucketSize = 16) {
-			if (bucketSize != 16) {
+		explicit HashTable(size_type bucketSize = 13) {
+			if (bucketSize != 13) {
 				if (bucketSize <= m_bucketSizes[0]) {
 					bucketSize = m_bucketSizes[0];
 					m_currentBucketSizeIndex = 0;
@@ -679,6 +792,12 @@ namespace stml {
 				}
 
 			}
+			size_t t = bucketSize;
+			auto new_prime_index = hash_policy.next_size_over(t);
+			hash_policy.commit(new_prime_index);
+
+			bucketSize = t;
+
 			m_nonemptyCount = 0;
 			m_bucketFull = false;
 			m_pool.reserve(20);
@@ -741,6 +860,7 @@ namespace stml {
 			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);
 			m_saveEmpty = std::move(other.m_saveEmpty);
 			m_nonemptyCount = std::move(other.m_nonemptyCount);
+			hash_policy = std::move(other.hash_policy);
 			other.m_bucketSize = 0;
 			other.m_size = 0;
 		}
@@ -756,6 +876,7 @@ namespace stml {
 			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);
 			m_saveEmpty = std::move(other.m_saveEmpty);
 			m_nonemptyCount = std::move(other.m_nonemptyCount);
+			hash_policy = std::move(other.hash_policy);
 			other.m_bucketSize = 0;
 			other.m_size = 0;
 
@@ -771,7 +892,7 @@ namespace stml {
 			m_buckets.reserve(m_bucketSize);
 			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 			m_nonemptyCount = other.m_nonemptyCount;
-
+			hash_policy = other.hash_policy;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
@@ -786,6 +907,7 @@ namespace stml {
 			m_buckets.reserve(m_bucketSize);
 			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 			m_nonemptyCount = other.m_nonemptyCount;
+			hash_policy = other.hash_policy;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
 				m_buckets.push_back(b);
