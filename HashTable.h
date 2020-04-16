@@ -32,7 +32,8 @@ namespace stml {
 		std::vector<node_type*, Alloc> m_pool;
 
 		const int MAX_ITEMS_IN_BUCKET = 7;			
-		const double LOAD_FACTOR = 0.90;				
+		const double LOAD_FACTOR = 0.90;
+		const int TRY_MOVE_ITEMS = 4;
 
 		//const std::vector<size_type> m_bucketSizes = { 4, 16, 64, 128, 512, 1024, 4096, 8192, 16384, 32768, 65536, 131072,  524288, 1048576, 2097152 };
 		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 518509,  1306601, 2613229,4148279 };
@@ -508,7 +509,25 @@ namespace stml {
 					bucket->node.next = node;
 					return 1;
 				}
-				return setLast(bucket->node.next, node);	
+				int t = setLast(bucket->node.next, node);
+
+				if (t >= TRY_MOVE_ITEMS) {
+				// try move to next bucket if that one is empty
+					if (pos + 1 < m_bucketSize) {
+						auto *bucketNext = m_buckets[pos + 1];
+						if (!bucketNext->active) {			
+							removeAtEx(hash, key);											
+							m_size++;						
+							bucketNext->node.key = key;
+							bucketNext->node.value = std::move(value);
+							bucketNext->node.hash = hash;
+							bucketNext->active = true;
+							m_nonemptyCount++;
+							return t - 1;
+						}					
+					}								
+				}
+				return t;
 			}
 
 			return 1;
@@ -683,7 +702,7 @@ namespace stml {
 			}
 
 			calcEmpty();
-			m_saveEmpty.push_back(empty / (double)old * 100 );
+			m_saveEmpty.push_back(empty );
 
 		}
 
@@ -703,6 +722,16 @@ namespace stml {
 				}
 				node = node->next;
 			}
+
+			if (pos + 1 < m_bucketSize) {
+				auto *bucketNext = m_buckets[pos + 1];
+				if (bucketNext->active && bucketNext->node.hash == hash && bucketNext->node.key == key) {
+					return bucketNext->node.value;
+
+				}
+
+			}
+				
 
 			throw std::runtime_error("not found");
 
@@ -751,6 +780,22 @@ namespace stml {
 					prev = node;
 					node = node->next;
 				}
+			}
+
+			if (pos + 1 < m_bucketSize) {
+				auto *bucketNext = m_buckets[pos + 1];
+				if (bucketNext->active && bucketNext->node.hash == hash && bucketNext->node.key == key) {
+					bucketNext->active = false;
+					m_size--;
+					moveToFront(bucketNext);	//check if we can move the next to the front
+
+					if (!bucketNext->active)
+						m_nonemptyCount--;
+
+					return bucketNext->active ? createIterator(&bucketNext->node, pos) : createIterator(bucketNext->node.next, pos);
+
+				}
+
 			}
 
 			return end();
@@ -824,7 +869,7 @@ namespace stml {
 			
 		}
 
-		void calcEmpty() {
+		size_type calcEmpty() {
 			size_type empty = 0;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				if (!m_buckets[i]->active || !m_buckets[i]->node.next) {
@@ -832,6 +877,7 @@ namespace stml {
 				}
 			}
 			m_nonemptyCount = m_bucketSize - empty;
+			return empty;
 		}
 
 		void destroy() {
@@ -932,26 +978,40 @@ namespace stml {
 		}
 
 		template <typename V>
-		void emplace(const K& key, V&& value) {
+		void emplace(const K& key, V&& value, bool update) {
 
 			hash_type hash = getHash(key);
 		
 			size_type pos = calcPos(hash);
 
-			auto *bucket = m_buckets[pos];
+			if (update) {
+				//check if exist
+				auto *bucket = m_buckets[pos];
 
-			if (bucket->active && bucket->node.hash == hash && bucket->node.key == key) {
-				bucket->node.value = std::move(value);
-				return;
-			}
-			auto *node = bucket->node.next;
-
-			while (node != nullptr) {
-				if (node->hash == hash && node->key == key) {
-					node->value = std::move(value);
+				//update if exist
+				if (bucket->active && bucket->node.hash == hash && bucket->node.key == key) {
+					bucket->node.value = std::move(value);
 					return;
 				}
-				node = node->next;
+				auto *node = bucket->node.next;
+
+				while (node != nullptr) {
+					if (node->hash == hash && node->key == key) {
+						node->value = std::move(value);
+						return;
+					}
+					node = node->next;
+				}
+
+				if (pos + 1 < m_bucketSize) {
+					auto *bucketNext = m_buckets[pos + 1];
+					if (bucketNext->active && bucketNext->node.hash == hash && bucketNext->node.key == key) {
+						bucketNext->node.value = std::move(value);
+						return;
+					}
+
+				}
+
 			}
 
 			int count = insertEmplace(pos, hash, key, std::move(value));
@@ -970,14 +1030,23 @@ namespace stml {
 			}
 		}
 
+		// will check if key exist before
 		void add(const K& key, const V &value) {
-			emplace(key, value);
+			emplace(key, value, true);
 		}
 		
 		void add(const K& key, V &&value) {
-			emplace(key, std::move(value));		
+			emplace(key, std::move(value), true);		
 		}
 
+		//use if you know key is unique
+		void insert(const K& key, const V &value) {
+			emplace(key, value, false);
+		}
+
+		void insert(const K& key, V &&value) {
+			emplace(key, std::move(value) , false);
+		}
 
 
 		size_type size() const {
@@ -1006,6 +1075,16 @@ namespace stml {
 
 				node = node->next;
 			}
+
+
+			if (pos + 1 < m_bucketSize) {
+				auto *bucketNext = m_buckets[pos + 1];
+				if (bucketNext->active && bucketNext->node.hash == hash && bucketNext->node.key == key) {
+					return createIterator(node, pos);
+				}
+
+			}
+
 
 			return end();
 		}
@@ -1050,6 +1129,16 @@ namespace stml {
 				node = node->next;
 			}
 
+
+			if (pos + 1 < m_bucketSize) {
+				auto *bucketNext = m_buckets[pos + 1];
+				if (bucketNext->active && bucketNext->node.hash == hash && bucketNext->node.key == key) {
+					return true;
+				}
+
+			}
+
+
 			return false;
 		}
 
@@ -1057,11 +1146,18 @@ namespace stml {
 		void clearAndTrim() {
 
 			clear();
-			
-		
+						
 			m_currentBucketSizeIndex = m_currentBucketSizeIndex / 2;
 						
+
 			size_type bucketSize = m_bucketSizes[m_currentBucketSizeIndex];
+			
+			size_t sizeFromPrim = bucketSize;
+
+			auto new_prime_index = hash_policy.next_size_over(sizeFromPrim);
+		
+			bucketSize = sizeFromPrim;
+			hash_policy.commit(new_prime_index);
 
 			for (size_type i = bucketSize; i < m_bucketSize; i++) {
 				delete m_buckets[i];
@@ -1091,6 +1187,11 @@ namespace stml {
 
 		std::vector<int> getRehashInfo() const{
 			return m_saveEmpty;
+		}
+
+		void checkEmpty() {
+			size_type empty = calcEmpty();
+			m_saveEmpty.push_back(empty / (double)m_bucketSize * 100);
 		}
 
 
