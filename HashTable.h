@@ -30,12 +30,10 @@ namespace stml {
 		using const_reference = const V&;
 
 		std::vector<node_type*, Alloc> m_pool;
-
-		const int MAX_ITEMS_IN_BUCKET = 7;			
+	
 		const double LOAD_FACTOR = 0.90;
-		const int TRY_MOVE_ITEMS = 4;
+		const int TRY_MOVE_ITEMS_COUNT = 4;
 
-		//const std::vector<size_type> m_bucketSizes = { 4, 16, 64, 128, 512, 1024, 4096, 8192, 16384, 32768, 65536, 131072,  524288, 1048576, 2097152 };
 		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 518509,  1306601, 2613229,4148279 };
 		unsigned int m_currentBucketSizeIndex = 1;		
 		std::hash<std::string> m_stringHasher;
@@ -496,8 +494,7 @@ namespace stml {
 				bucket->node.key = key;
 				bucket->node.value = std::move(value);
 				bucket->node.hash = hash;
-				bucket->active = true;
-				m_nonemptyCount++;
+				bucket->active = true;	
 			}
 			else {			
 				auto *node = getNode();				
@@ -511,8 +508,8 @@ namespace stml {
 				}
 				int t = setLast(bucket->node.next, node);
 
-				if (t >= TRY_MOVE_ITEMS) {
-				// try move to next bucket if that one is empty
+				if (t >= TRY_MOVE_ITEMS_COUNT) {		//many items in this bucket , see if next one is empty
+		
 					if (pos + 1 < m_bucketSize) {
 						auto *bucketNext = m_buckets[pos + 1];
 						if (!bucketNext->active) {			
@@ -522,7 +519,6 @@ namespace stml {
 							bucketNext->node.value = std::move(value);
 							bucketNext->node.hash = hash;
 							bucketNext->active = true;
-							m_nonemptyCount++;
 							return t - 1;
 						}					
 					}								
@@ -608,7 +604,6 @@ namespace stml {
 
 
 		void rehash() {
-			m_nonemptyCount = 0;
 		
 			size_type newsize = 0;
 
@@ -701,8 +696,7 @@ namespace stml {
 				insert(n);
 			}
 
-			calcEmpty();
-			m_saveEmpty.push_back(empty );
+			
 
 		}
 
@@ -746,9 +740,7 @@ namespace stml {
 				m_size--;				
 				moveToFront(bucket);	//check if we can move the next to the front
 				
-				if (!bucket->active)
-					m_nonemptyCount--;
-
+			
 				return bucket->active ? createIterator(&bucket->node, pos) : createIterator(bucket->node.next, pos);
 
 			}
@@ -789,9 +781,7 @@ namespace stml {
 					m_size--;
 					moveToFront(bucketNext);	//check if we can move the next to the front
 
-					if (!bucketNext->active)
-						m_nonemptyCount--;
-
+				
 					return bucketNext->active ? createIterator(&bucketNext->node, pos) : createIterator(bucketNext->node.next, pos);
 
 				}
@@ -842,9 +832,8 @@ namespace stml {
 			hash_policy.commit(new_prime_index);
 
 			bucketSize = t;
+	
 
-			m_nonemptyCount = 0;
-			m_bucketFull = false;
 			m_pool.reserve(20);
 			m_bucketSize = bucketSize;
 			m_size = 0;
@@ -864,21 +853,7 @@ namespace stml {
 			return true;
 		}
 
-		float emptyCount() const {		
-			return 1.0f*(m_bucketSize - m_nonemptyCount) /m_bucketSize;
-			
-		}
-
-		size_type calcEmpty() {
-			size_type empty = 0;
-			for (size_type i = 0; i < m_bucketSize; i++) {
-				if (!m_buckets[i]->active || !m_buckets[i]->node.next) {
-					empty++;
-				}
-			}
-			m_nonemptyCount = m_bucketSize - empty;
-			return empty;
-		}
+		
 
 		void destroy() {
 			for (size_type i = 0; i < m_bucketSize; i++) {
@@ -888,7 +863,7 @@ namespace stml {
 			m_buckets.clear();
 			m_bucketSize = 0;
 			m_size = 0;
-			m_nonemptyCount = 0;
+		
 			while (!m_pool.empty()) {
 				m_allocator.destroy(m_pool.back());
 				m_allocator.deallocate(m_pool.back(), 1);
@@ -904,8 +879,7 @@ namespace stml {
 			m_size = std::move(other.m_size);
 			m_buckets = std::move(other.m_buckets);
 			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);
-			m_saveEmpty = std::move(other.m_saveEmpty);
-			m_nonemptyCount = std::move(other.m_nonemptyCount);
+			
 			hash_policy = std::move(other.hash_policy);
 			other.m_bucketSize = 0;
 			other.m_size = 0;
@@ -919,9 +893,7 @@ namespace stml {
 			m_bucketSize = std::move(other.m_bucketSize);
 			m_size = std::move(other.m_size);
 			m_buckets = std::move(other.m_buckets);
-			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);
-			m_saveEmpty = std::move(other.m_saveEmpty);
-			m_nonemptyCount = std::move(other.m_nonemptyCount);
+			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);		
 			hash_policy = std::move(other.hash_policy);
 			other.m_bucketSize = 0;
 			other.m_size = 0;
@@ -937,7 +909,7 @@ namespace stml {
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
 			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
-			m_nonemptyCount = other.m_nonemptyCount;
+		
 			hash_policy = other.hash_policy;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
@@ -952,7 +924,6 @@ namespace stml {
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
 			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
-			m_nonemptyCount = other.m_nonemptyCount;
 			hash_policy = other.hash_policy;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
@@ -1018,16 +989,13 @@ namespace stml {
 
 			m_size++;
 
-			if (m_size > 20) {
-				float f = (1.0f*m_size) / m_bucketSize;
-				if (f > LOAD_FACTOR) {
-					
-					float bucketsEmpty = emptyCount();
-					if ( count >= MAX_ITEMS_IN_BUCKET  || bucketsEmpty < 0.1) {
-						rehash();
-					}
-				}
+			float f = (1.0f*m_size) / m_bucketSize;
+			if (f > LOAD_FACTOR) {
+			
+				rehash();
+				
 			}
+		
 		}
 
 		// will check if key exist before
@@ -1185,14 +1153,6 @@ namespace stml {
 
 		}
 
-		std::vector<int> getRehashInfo() const{
-			return m_saveEmpty;
-		}
-
-		void checkEmpty() {
-			size_type empty = calcEmpty();
-			m_saveEmpty.push_back(empty / (double)m_bucketSize * 100);
-		}
 
 
 	private:
@@ -1201,9 +1161,7 @@ namespace stml {
 		iterator	m_end;		//end() iterator 
 		size_type m_size;
 		size_type m_bucketSize;
-		bool	  m_bucketFull;
-		std::vector<int> m_saveEmpty;
-		size_t m_nonemptyCount;
+	
 	};
 
 
