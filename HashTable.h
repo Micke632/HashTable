@@ -32,10 +32,8 @@ namespace stml {
 		std::vector<node_type*, Alloc> m_pool;
 	
 		const double LOAD_FACTOR = 0.90;
-		const int TRY_MOVE_ITEMS_COUNT = 4;
-
-		const std::vector<unsigned int> m_bucketSizes = { 3, 13, 97, 311, 719, 1931,7793, 19391, 37199, 99371, 193939, 518509,  1306601, 2613229,4148279 };
-		unsigned int m_currentBucketSizeIndex = 1;		
+		const int TRY_MOVE_NODE_COUNT = 3;		
+	
 		std::hash<std::string> m_stringHasher;
 
 		static int setLast(node_type *node_next , node_type *node) {					
@@ -508,7 +506,7 @@ namespace stml {
 				}
 				int t = setLast(bucket->node.next, node);
 
-				if (t >= TRY_MOVE_ITEMS_COUNT) {		//many items in this bucket , see if next one is empty
+				if (t >= TRY_MOVE_NODE_COUNT) {		//many items in this bucket , see if next one is empty
 		
 					if (pos + 1 < m_bucketSize) {
 						auto *bucketNext = m_buckets[pos + 1];
@@ -605,16 +603,10 @@ namespace stml {
 
 		void rehash() {
 		
-			size_type newsize = 0;
+			size_type newsize = m_bucketSize * 2;
 
-			
-			if (m_currentBucketSizeIndex == m_bucketSizes.size() -1) {
-				newsize = m_bucketSize * 2;			
-			}
-			else {
-				newsize = m_bucketSizes[++m_currentBucketSizeIndex];
-			}
 			size_t sizeFromPrim = newsize;
+			
 
 			//get a size 
 			auto new_prime_index = hash_policy.next_size_over(sizeFromPrim);
@@ -633,16 +625,12 @@ namespace stml {
 			std::vector< std::pair<node_type*, size_type> > moveNodes;
 			moveNodes.reserve(old);
 
-			size_type empty = 0;
-
 			for (size_type i = 0; i < old; i++) {
 				auto *bucket = m_buckets[i];
 			
 				auto *node = bucket->node.next;
 
-				if (!node && !bucket->active) {
-					empty++;
-				}
+			
 
 				if (bucket->active) {			
 					size_type newPos = calcPos(bucket->node.hash);
@@ -809,24 +797,7 @@ namespace stml {
 		}
 
 		explicit HashTable(size_type bucketSize = 13) {
-			if (bucketSize != 13) {
-				if (bucketSize <= m_bucketSizes[0]) {
-					bucketSize = m_bucketSizes[0];
-					m_currentBucketSizeIndex = 0;
-				}
-				else {
-					unsigned int i = 1;
-					for (unsigned int p : m_bucketSizes) {
-						if (bucketSize <= m_bucketSizes[i]) {
-							bucketSize = m_bucketSizes[i];
-							m_currentBucketSizeIndex = i;
-							break;
-						}
-						i++;
-					}
-				}
-
-			}
+			
 			size_t t = bucketSize;
 			auto new_prime_index = hash_policy.next_size_over(t);
 			hash_policy.commit(new_prime_index);
@@ -878,7 +849,6 @@ namespace stml {
 			m_bucketSize = std::move(other.m_bucketSize);
 			m_size = std::move(other.m_size);
 			m_buckets = std::move(other.m_buckets);
-			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);
 			
 			hash_policy = std::move(other.hash_policy);
 			other.m_bucketSize = 0;
@@ -893,7 +863,7 @@ namespace stml {
 			m_bucketSize = std::move(other.m_bucketSize);
 			m_size = std::move(other.m_size);
 			m_buckets = std::move(other.m_buckets);
-			m_currentBucketSizeIndex = std::move(other.m_currentBucketSizeIndex);		
+
 			hash_policy = std::move(other.hash_policy);
 			other.m_bucketSize = 0;
 			other.m_size = 0;
@@ -908,7 +878,6 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
-			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 		
 			hash_policy = other.hash_policy;
 			for (size_type i = 0; i < m_bucketSize; i++) {
@@ -923,7 +892,6 @@ namespace stml {
 			m_bucketSize = other.m_bucketSize;
 			m_size = other.m_size;
 			m_buckets.reserve(m_bucketSize);
-			m_currentBucketSizeIndex = other.m_currentBucketSizeIndex;
 			hash_policy = other.hash_policy;
 			for (size_type i = 0; i < m_bucketSize; i++) {
 				auto *b = other.m_buckets[i]->copy(this);
@@ -1115,10 +1083,7 @@ namespace stml {
 
 			clear();
 						
-			m_currentBucketSizeIndex = m_currentBucketSizeIndex / 2;
-						
-
-			size_type bucketSize = m_bucketSizes[m_currentBucketSizeIndex];
+			size_type bucketSize = m_bucketSize / 2;
 			
 			size_t sizeFromPrim = bucketSize;
 
